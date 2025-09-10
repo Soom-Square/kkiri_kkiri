@@ -77,5 +77,3 @@ yarn-error.log
 .vscode
 __tests__
 .bundle
-package-lock.json
-package.json
