@@ -259,114 +259,10 @@ app.delete('/api/delete-user/:id', (req, res) => {
 });
 
 /* ======================
-   MyPage 관련 API 엔드포인트 추가
+   리뷰/평가 관련 API (개선된 버전)
    ====================== */
 
-// 사용자의 활동 참여 정보 조회 API
-app.get('/api/participations/user/:userId', (req, res) => {
-  const userId = req.params.userId;
-  
-  // 실제 DB 구조에 맞게 수정 필요 - 현재는 더미 데이터 반환
-  // participations 테이블이 있다고 가정
-  const sql = `
-    SELECT 
-      participation_id,
-      user_id,
-      activity_id,
-      participated_at,
-      participated_with
-    FROM user_activity_participations 
-    WHERE user_id = ?
-  `;
-  
-  db.query(sql, [userId], (err, results) => {
-    if (err) {
-      console.error('참여 정보 조회 오류:', err);
-      return res.status(500).json({ success: false, message: '서버 오류' });
-    }
-    
-    res.json({ 
-      success: true, 
-      participations: results || [] 
-    });
-  });
-});
-
-// 여러 사용자 정보 일괄 조회 API
-app.post('/api/users/batch', (req, res) => {
-  const { user_ids } = req.body;
-  
-  if (!user_ids || !Array.isArray(user_ids) || user_ids.length === 0) {
-    return res.status(400).json({ success: false, message: '사용자 ID 목록이 필요합니다' });
-  }
-  
-  const placeholders = user_ids.map(() => '?').join(',');
-  const sql = `SELECT id, name, email, department FROM users WHERE id IN (${placeholders})`;
-  
-  db.query(sql, user_ids, (err, results) => {
-    if (err) {
-      console.error('사용자 일괄 조회 오류:', err);
-      return res.status(500).json({ success: false, message: '서버 오류' });
-    }
-    
-    // 결과에서 id를 user_id로도 복사 (MyPage2에서 user_id를 기대하므로)
-    const users = (results || []).map(user => ({
-      ...user,
-      user_id: user.id // id를 user_id로 복사
-    }));
-    
-    res.json({ 
-      success: true, 
-      users: users 
-    });
-  });
-});
-
-// 기존 평가 조회 API
-app.get('/api/reviews/existing/:reviewerId/:revieweeId/:activityId', (req, res) => {
-  const { reviewerId, revieweeId, activityId } = req.params;
-  
-  const sql = `
-    SELECT 
-      review_id,
-      reviewer_id,
-      reviewee_id,
-      related_team_id,
-      review_high,
-      review_medium,
-      review_low,
-      comment,
-      CASE 
-        WHEN review_high = 1 THEN 'high'
-        WHEN review_medium = 1 THEN 'medium'
-        WHEN review_low = 1 THEN 'low'
-        ELSE NULL
-      END as evaluation_type
-    FROM reviews 
-    WHERE reviewer_id = ? AND reviewee_id = ? AND related_team_id = ?
-  `;
-  
-  db.query(sql, [reviewerId, revieweeId, activityId], (err, results) => {
-    if (err) {
-      console.error('기존 평가 조회 오류:', err);
-      return res.status(500).json({ success: false, message: '서버 오류' });
-    }
-    
-    if (results.length > 0) {
-      res.json({ 
-        success: true, 
-        existingReview: results[0] 
-      });
-    } else {
-      res.json({ 
-        success: true, 
-        existingReview: null 
-      });
-    }
-  });
-});
-
-// 평가 저장/수정 API
+// 1. 리뷰 작성/수정 API (개선된 버전)
 app.post('/api/reviews', (req, res) => {
   const {
     reviewer_id,
@@ -378,13 +274,31 @@ app.post('/api/reviews', (req, res) => {
     comment,
     is_update
   } = req.body;
-  
+
+  console.log('=== 리뷰 요청 데이터 ===');
+  console.log('reviewer_id:', reviewer_id);
+  console.log('reviewee_id:', reviewee_id);
+  console.log('related_team_id:', related_team_id);
+  console.log('is_update:', is_update);
+
+  // 필수 데이터 검증
   if (!reviewer_id || !reviewee_id || !related_team_id) {
-    return res.status(400).json({ success: false, message: '필수 정보가 누락되었습니다' });
+    return res.status(400).json({ 
+      success: false, 
+      message: '필수 정보가 누락되었습니다' 
+    });
   }
-  
+
+  // 자기 자신을 평가하는 것 방지
+  if (reviewer_id === reviewee_id) {
+    return res.status(400).json({ 
+      success: false, 
+      message: '자기 자신을 평가할 수 없습니다' 
+    });
+  }
+
   if (is_update) {
-    // 기존 평가 수정
+    // 기존 리뷰 수정
     const updateSql = `
       UPDATE reviews 
       SET review_high = ?, review_medium = ?, review_low = ?, comment = ?, updated_at = NOW()
@@ -393,95 +307,434 @@ app.post('/api/reviews', (req, res) => {
     
     db.query(updateSql, [review_high, review_medium, review_low, comment, reviewer_id, reviewee_id, related_team_id], (err, result) => {
       if (err) {
-        console.error('평가 수정 오류:', err);
-        return res.status(500).json({ success: false, message: '서버 오류' });
+        console.error('리뷰 수정 오류:', err);
+        return res.status(500).json({ success: false, message: '서버 오류: ' + err.message });
       }
       
-      res.json({ success: true, message: '평가가 수정되었습니다' });
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ success: false, message: '수정할 리뷰를 찾을 수 없습니다' });
+      }
+      
+      console.log('✅ 리뷰 수정 성공');
+      res.json({ success: true, message: '리뷰가 성공적으로 수정되었습니다' });
     });
   } else {
-    // 새 평가 저장
-    const insertSql = `
-      INSERT INTO reviews (reviewer_id, reviewee_id, related_team_id, review_high, review_medium, review_low, comment)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+    // 새 리뷰 작성 - 먼저 중복 체크
+    const checkSql = `
+      SELECT review_id FROM reviews 
+      WHERE reviewer_id = ? AND reviewee_id = ? AND related_team_id = ?
     `;
     
-    db.query(insertSql, [reviewer_id, reviewee_id, related_team_id, review_high, review_medium, review_low, comment], (err, result) => {
-      if (err) {
-        console.error('평가 저장 오류:', err);
+    db.query(checkSql, [reviewer_id, reviewee_id, related_team_id], (checkErr, checkResults) => {
+      if (checkErr) {
+        console.error('중복 체크 오류:', checkErr);
         return res.status(500).json({ success: false, message: '서버 오류' });
       }
       
-      res.json({ success: true, message: '평가가 저장되었습니다', review_id: result.insertId });
+      if (checkResults.length > 0) {
+        return res.status(400).json({ 
+          success: false, 
+          message: '이미 이 팀원에 대한 평가를 작성했습니다. 수정하려면 기존 평가를 편집해주세요.' 
+        });
+      }
+      
+      // 새 리뷰 작성
+      const insertSql = `
+        INSERT INTO reviews (reviewer_id, reviewee_id, related_team_id, review_high, review_medium, review_low, comment)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `;
+      
+      db.query(insertSql, [reviewer_id, reviewee_id, related_team_id, review_high, review_medium, review_low, comment], (err, result) => {
+        if (err) {
+          console.error('리뷰 작성 오류:', err);
+          if (err.code === 'ER_DUP_ENTRY') {
+            return res.status(400).json({ success: false, message: '이미 이 팀원에 대한 평가를 작성했습니다' });
+          }
+          return res.status(500).json({ success: false, message: '서버 오류: ' + err.message });
+        }
+        
+        console.log('✅ 새 리뷰 작성 성공');
+        res.json({ success: true, message: '리뷰가 성공적으로 작성되었습니다', review_id: result.insertId });
+      });
     });
   }
 });
 
-// 사용자가 받은 평가 요약 조회 API
-app.get('/api/user/:userId/evaluations', (req, res) => {
-  const userId = req.params.userId;
+// 2. 기존 리뷰 조회 API (개선된 버전)
+app.get('/api/reviews/existing/:reviewer_id/:reviewee_id/:related_team_id', (req, res) => {
+  const { reviewer_id, reviewee_id, related_team_id } = req.params;
+  
+  console.log(`=== 기존 리뷰 조회 요청 ===`);
+  console.log(`reviewer_id: ${reviewer_id}, reviewee_id: ${reviewee_id}, related_team_id: ${related_team_id}`);
+  
+  const sql = `
+    SELECT review_id, review_high, review_medium, review_low, comment,
+           CASE 
+             WHEN review_high = 1 THEN 'high'
+             WHEN review_medium = 1 THEN 'medium'
+             WHEN review_low = 1 THEN 'low'
+             ELSE NULL
+           END as evaluation_type,
+           created_at, updated_at
+    FROM reviews 
+    WHERE reviewer_id = ? AND reviewee_id = ? AND related_team_id = ?
+  `;
+  
+  db.query(sql, [reviewer_id, reviewee_id, related_team_id], (err, results) => {
+    if (err) {
+      console.error('기존 리뷰 조회 오류:', err);
+      return res.status(500).json({ success: false, message: '서버 오류' });
+    }
+    
+    console.log(`조회 결과: ${results.length}개 리뷰 발견`);
+    
+    if (results.length > 0) {
+      console.log('✅ 기존 리뷰 발견:', results[0]);
+      res.json({ success: true, existingReview: results[0] });
+    } else {
+      console.log('기존 리뷰 없음');
+      res.json({ success: true, existingReview: null });
+    }
+  });
+});
+
+// 3. 사용자별 받은 평가 요약 조회 API (개선된 버전)
+app.get('/api/user/:id/evaluations', (req, res) => {
+  const { id } = req.params;
+  
+  console.log(`=== 사용자 ${id} 평가 요약 조회 ===`);
   
   const sql = `
     SELECT 
-      SUM(review_low) as review_low,
-      SUM(review_medium) as review_medium,
-      SUM(review_high) as review_high
+      COALESCE(SUM(review_low), 0) as review_low,
+      COALESCE(SUM(review_medium), 0) as review_medium,
+      COALESCE(SUM(review_high), 0) as review_high,
+      COUNT(*) as total_reviews
     FROM reviews 
     WHERE reviewee_id = ?
   `;
   
-  db.query(sql, [userId], (err, results) => {
+  db.query(sql, [id], (err, results) => {
     if (err) {
-      console.error('사용자 평가 요약 조회 오류:', err);
+      console.error('사용자 평가 조회 오류:', err);
       return res.status(500).json({ success: false, message: '서버 오류' });
     }
     
-    const evaluations = results[0] || {
-      review_low: 0,
-      review_medium: 0,
-      review_high: 0
-    };
+    const evaluations = results[0] || { review_low: 0, review_medium: 0, review_high: 0, total_reviews: 0 };
+    
+    console.log('✅ 평가 요약 조회 결과:', evaluations);
     
     res.json({ 
       success: true, 
-      evaluations: {
-        review_low: evaluations.review_low || 0,
-        review_medium: evaluations.review_medium || 0,
-        review_high: evaluations.review_high || 0
-      },
-      debug: `사용자 ${userId}의 평가 요약 조회 완료`
+      evaluations,
+      debug: `사용자 ${id}의 평가 요약 - 총 ${evaluations.total_reviews}개 리뷰`
     });
   });
 });
 
-// 사용자의 활동 이력 조회 API
-app.get('/api/user/:userId/activities', (req, res) => {
-  const userId = req.params.userId;
+// 4. 사용자 활동 이력 조회 API (실제 데이터와 연결)
+app.get('/api/user/:id/activities', (req, res) => {
+  const { id } = req.params;
   
+  console.log(`=== 사용자 ${id} 활동 이력 조회 ===`);
+  
+  // user_id 유효성 검사
+  if (!id || id === 'undefined') {
+    console.log('❌ 유효하지 않은 id:', id);
+    return res.status(400).json({ 
+      success: false, 
+      message: '유효한 사용자 ID가 필요합니다' 
+    });
+  }
+  
+  // 실제 참여 데이터와 활동 정보를 조인하여 조회
   const sql = `
     SELECT DISTINCT
       a.activity_id as id,
       a.title,
+      p.participated_at,
+      p.participated_with,
       COALESCE(r.comment, '아직 평가가 없습니다.') as comment
     FROM activitys a
-    LEFT JOIN participations p ON a.activity_id = p.activity_id
+    INNER JOIN user_activity_participations p ON a.activity_id = p.activity_id
     LEFT JOIN reviews r ON r.reviewee_id = ? AND r.related_team_id = a.activity_id
     WHERE p.user_id = ?
-    ORDER BY a.created_at DESC
+    ORDER BY p.created_at DESC
   `;
   
-  db.query(sql, [userId, userId], (err, results) => {
+  db.query(sql, [id, id], (err, results) => {
     if (err) {
-      console.error('사용자 활동 이력 조회 오류:', err);
+      console.error('사용자 활동 조회 오류:', err);
       return res.status(500).json({ success: false, message: '서버 오류' });
     }
     
-    res.json({ 
-      success: true, 
-      activities: results || [] 
-    });
+    console.log(`✅ 활동 이력 조회 결과: ${results.length}개 활동`);
+    console.log('조회된 활동:', results);
+    
+    res.json({ success: true, activities: results });
   });
 });
+
+// 5. 사용자의 참여 정보 조회 API (실제 테이블 구조에 맞게 수정)
+app.get('/api/participations/user/:id', (req, res) => {
+  const { id } = req.params;
+  
+  console.log(`=== 사용자 ${id} 참여 정보 조회 ===`);
+  
+  // user_id 유효성 검사
+  if (!id || id === 'undefined') {
+    return res.status(400).json({ 
+      success: false, 
+      message: '유효한 사용자 ID가 필요합니다' 
+    });
+  }
+  
+  // 실제 테이블명과 컬럼명 사용
+  const sql = `
+    SELECT 
+      participation_id, 
+      id,
+      activity_id, 
+      participated_at,
+      participated_with,
+      created_at
+    FROM user_activity_participations 
+    WHERE id = ?
+    ORDER BY created_at DESC
+  `;
+  
+  db.query(sql, [id], (err, results) => {
+    if (err) {
+      console.error('참여 정보 조회 오류:', err);
+      return res.status(500).json({ success: false, message: '서버 오류' });
+    }
+    
+    console.log(`✅ 참여 정보 조회 결과: ${results.length}개 참여`);
+    console.log('조회된 데이터:', results);
+    
+    res.json({ success: true, participations: results });
+  });
+});
+
+// 6. 여러 사용자 정보 일괄 조회 API (수정된 버전 - 핵심 수정사항)
+app.post('/api/users/batch', (req, res) => {
+  const { user_ids } = req.body;
+  
+  if (!Array.isArray(user_ids) || user_ids.length === 0) {
+    return res.status(400).json({ success: false, message: '사용자 ID 배열이 필요합니다' });
+  }
+  
+  console.log(`=== 일괄 사용자 조회: ${user_ids.length}명 ===`);
+  
+  const placeholders = user_ids.map(() => '?').join(',');
+  // ✅ 핵심 수정: id as user_id 별칭 제거, 직접 id 반환
+  const sql = `SELECT id, name, department FROM users WHERE id IN (${placeholders})`;
+  
+  db.query(sql, user_ids, (err, results) => {
+    if (err) {
+      console.error('사용자 일괄 조회 오류:', err);
+      return res.status(500).json({ success: false, message: '서버 오류' });
+    }
+    
+    console.log(`✅ 일괄 조회 결과: ${results.length}명`);
+    console.log('조회된 사용자 데이터:', results); // 디버깅용
+    res.json({ success: true, users: results });
+  });
+});
+
+// 7. MyPage2에서 사용할 팀원 정보 조회 API (실제 데이터 기반)
+app.get('/api/user/:user_id/teammates', (req, res) => {
+  const { user_id } = req.params;
+  
+  console.log(`=== 사용자 ${user_id}의 팀원 정보 조회 ===`);
+  
+  if (!user_id || user_id === 'undefined') {
+    return res.status(400).json({ 
+      success: false, 
+      message: '유효한 사용자 ID가 필요합니다' 
+    });
+  }
+  
+  // 사용자가 참여한 활동별로 팀원 정보 조회
+  const sql = `
+    SELECT 
+      p.activity_id,
+      a.title as activity_title,
+      p.participated_with,
+      p.participated_at
+    FROM user_activity_participations p
+    INNER JOIN activitys a ON p.activity_id = a.activity_id
+    WHERE p.user_id = ?
+    ORDER BY p.created_at DESC
+  `;
+  
+  db.query(sql, [user_id], (err, results) => {
+    if (err) {
+      console.error('팀원 정보 조회 오류:', err);
+      return res.status(500).json({ success: false, message: '서버 오류' });
+    }
+    
+    console.log(`✅ 사용자 ${user_id}의 참여 활동: ${results.length}개`);
+    
+    if (results.length === 0) {
+      return res.json({ success: true, participations: [] });
+    }
+    
+    // participated_with에서 본인 제외하고 다른 팀원들의 정보 가져오기
+    const processParticipations = async () => {
+      const participations = [];
+      
+      for (const participation of results) {
+        try {
+          // JSON 파싱
+          let participatedWith = [];
+          if (participation.participated_with) {
+            if (typeof participation.participated_with === 'string') {
+              participatedWith = JSON.parse(participation.participated_with);
+            } else {
+              participatedWith = participation.participated_with;
+            }
+          }
+          
+          // 본인 제외
+          const teammateIds = participatedWith.filter(id => Number(id) !== Number(user_id));
+          
+          console.log(`활동 ${participation.activity_id}: 팀원 ${teammateIds.length}명`);
+          
+          if (teammateIds.length > 0) {
+            participations.push({
+              activity_id: participation.activity_id,
+              activity_title: participation.activity_title,
+              participated_at: participation.participated_at,
+              participated_with: teammateIds
+            });
+          }
+        } catch (parseError) {
+          console.error('JSON 파싱 오류:', parseError);
+        }
+      }
+      
+      res.json({ success: true, participations });
+    };
+    
+    processParticipations();
+  });
+});
+
+// 8. 디버깅용 - 전체 참여 정보 조회
+app.get('/api/participations/debug', (req, res) => {
+  const sql = `
+    SELECT 
+      p.*,
+      a.title as activity_title,
+      u.name as user_name
+    FROM user_activity_participations p
+    LEFT JOIN activitys a ON p.activity_id = a.activity_id
+    LEFT JOIN users u ON p.user_id = u.id
+    ORDER BY p.created_at DESC
+  `;
+  
+  db.query(sql, (err, results) => {
+    if (err) {
+      console.error('참여 정보 디버그 조회 오류:', err);
+      return res.status(500).json({ success: false, message: '서버 오류' });
+    }
+    
+    res.json({ success: true, participations: results });
+  });
+});
+
+// 9. 디버깅용 리뷰 전체 조회 API
+app.get('/api/reviews/debug', (req, res) => {
+  const sql = `
+    SELECT r.*, 
+           u1.name as reviewer_name, 
+           u2.name as reviewee_name
+    FROM reviews r
+    LEFT JOIN users u1 ON r.reviewer_id = u1.id
+    LEFT JOIN users u2 ON r.reviewee_id = u2.id
+    ORDER BY r.created_at DESC
+  `;
+  
+  db.query(sql, (err, results) => {
+    if (err) {
+      console.error('리뷰 디버그 조회 오류:', err);
+      return res.status(500).json({ success: false, message: '서버 오류' });
+    }
+    
+    res.json({ success: true, reviews: results });
+  });
+});
+
+// 10. 특정 활동의 참여자 목록 조회
+app.get('/api/activities/:activity_id/participants', (req, res) => {
+  const { activity_id } = req.params;
+  
+  const sql = `
+    SELECT 
+      p.user_id,
+      u.name,
+      u.department,
+      p.participated_at
+    FROM user_activity_participations p
+    INNER JOIN users u ON p.user_id = u.id
+    WHERE p.activity_id = ?
+    ORDER BY p.created_at ASC
+  `;
+  
+  db.query(sql, [activity_id], (err, results) => {
+    if (err) {
+      console.error('활동 참여자 조회 오류:', err);
+      return res.status(500).json({ success: false, message: '서버 오류' });
+    }
+    
+    res.json({ success: true, participants: results });
+  });
+});
+
+// 11. 프로필 이미지 업로드.
+// multer 설정 - 프로필 이미지 업로드용
+// ✅ 추가: 프로필 이미지를 위한 별도의 스토리지 설정
+const profileStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, './uploads/profiles/');
+  },
+  filename: (req, file, cb) => {
+    cb(null, req.params.id + '-' + Date.now() + path.extname(file.originalname));
+  },
+});
+
+const uploadProfile = multer({ storage: profileStorage });
+
+// ✅ 추가: 프로필 사진 업로드 및 업데이트 API
+app.post('/api/upload/profile/:id', uploadProfile.single('image'), (req, res) => {
+  const userId = req.params.id;
+  
+  if (!req.file) {
+    return res.status(400).json({ success: false, message: '파일이 없습니다.' });
+  }
+
+  // ✅ 업로드된 파일의 URL
+  const profileImageUrl = `${req.protocol}://${req.get('host')}/uploads/profiles/${req.file.filename}`;
+
+  // ✅ DB에서 사용자 프로필 사진 URL 업데이트
+  const sql = 'UPDATE users SET profile_picture = ? WHERE id = ?';
+  db.query(sql, [profileImageUrl, userId], (err, result) => {
+    if (err) {
+      console.error('DB 프로필 사진 업데이트 오류:', err);
+      return res.status(500).json({ success: false, message: '서버 오류' });
+    }
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: '사용자를 찾을 수 없습니다' });
+    }
+
+    res.json({ success: true, message: '프로필 사진이 성공적으로 업데이트되었습니다', profile_picture: profileImageUrl });
+  });
+});
+
+app.use('/uploads/profiles', express.static(path.join(__dirname, 'uploads', 'profiles')));
+
 
 /* ======================
    Team Recruitments & Applications APIs
@@ -760,3 +1013,8 @@ app.get('/api/recruitments/:id/team', (req, res) => {
     res.json(rows[0]);
   });
 });
+
+console.log('✅ 모든 API가 성공적으로 등록되었습니다');
+console.log('✅ 개선된 리뷰 관련 API가 포함되었습니다');
+console.log('✅ user_activity_participations 테이블에 맞게 수정된 API가 포함되었습니다');
+console.log('✅ users.id 필드 변경에 따른 수정이 완료되었습니다');
