@@ -151,28 +151,13 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 16,
     alignItems: 'center',
-    position: 'absolute',
-    bottom: 80,
-    left: 0,
-    right: 0,
   },
   confirmButtonText: {
     color: '#fff',
     fontSize: 18,
     fontWeight: 'bold',
   },
-  bottomNav: {
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    backgroundColor: '#fff',
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-  },
+  
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -192,22 +177,6 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
     color: '#666',
-  },
-  navItem: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 4,
-  },
-  navIcon: {
-    fontSize: 20,
-    color: '#666',
-    marginBottom: 2,
-  },
-  navText: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 4,
-    fontWeight: '500',
   },
   debugContainer: {
     backgroundColor: '#f0f0f0',
@@ -335,14 +304,16 @@ const MyPage2: React.FC = () => {
             
             const membersData = await membersResponse.json();
             
-            if (membersData.success && membersData.users && Array.isArray(membersData.users)) {
+             if (membersData.success && membersData.users && Array.isArray(membersData.users)) {
+              // ✅ 수정: 서버에서 이제 id 필드로 직접 반환하므로 member.id 사용
               const members = membersData.users.map((member: any) => ({
-                id: member.id, // API에서 반환하는 id 사용
+                id: member.id,  // ✅ member.user_id → member.id로 변경
                 name: member.name || '이름 없음',
                 department: member.department || '소속 미정',
                 selected: false
-              }));
-              
+            }));
+              console.log('변환된 멤버 데이터:', members);
+
               if (members.length > 0) {
                 groups.push({
                   id: participation.activity_id,
@@ -385,25 +356,32 @@ const MyPage2: React.FC = () => {
     }
   }, [user.id]);
 
-  const handleMemberSelect = (groupId: number, memberId: number) => {
-    setTeamGroups(prevGroups => 
-      prevGroups.map(group => 
-        group.id === groupId 
-          ? {
-              ...group,
-              members: group.members.map(member => 
-                member.id === memberId 
-                  ? { ...member, selected: !member.selected }
-                  : { ...member, selected: false } // 같은 그룹 내에서는 하나만 선택
-              )
-            }
-          : {
-              ...group,
-              members: group.members.map(member => ({ ...member, selected: false })) // 다른 그룹은 모두 해제
-            }
-      )
+const handleMemberSelect = (groupId: number, memberId: number) => {
+  setTeamGroups(prevGroups => {
+    // 먼저 모든 선택을 해제
+    const clearedGroups = prevGroups.map(group => ({
+      ...group,
+      members: group.members.map(member => ({
+        ...member,
+        selected: false
+      }))
+    }));
+    
+    // 그 다음 클릭된 멤버만 선택
+    return clearedGroups.map(group => 
+      group.id === groupId 
+        ? {
+            ...group,
+            members: group.members.map(member => 
+              member.id === memberId 
+                ? { ...member, selected: true } // 클릭된 멤버만 선택
+                : member
+            )
+          }
+        : group
     );
-  };
+  });
+};
 
   const handleConfirm = () => {
     console.log('handleConfirm 함수 호출됨');
@@ -532,29 +510,7 @@ const MyPage2: React.FC = () => {
         </TouchableOpacity>
       )}
 
-      {/* Bottom Navigation - 고정 위치 */}
-      <View style={styles.bottomNav}>
-        <TouchableOpacity style={styles.navItem}>
-          <Text style={styles.navIcon}>🏠</Text>
-          <Text style={styles.navText}>홈</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem}>
-          <Text style={styles.navIcon}>📄</Text>
-          <Text style={styles.navText}>정보</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem}>
-          <Text style={styles.navIcon}>✏️</Text>
-          <Text style={styles.navText}>활동</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem}>
-          <Text style={styles.navIcon}>📦</Text>
-          <Text style={styles.navText}>매칭</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem}>
-          <Text style={[styles.navIcon, { color: '#7c4dff' }]}>👤</Text>
-          <Text style={[styles.navText, { color: '#7c4dff' }]}>마이페이지</Text>
-        </TouchableOpacity>
-      </View>
+      
     </SafeAreaView>
   );
 };

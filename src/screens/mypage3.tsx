@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Alert, TextInput, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Alert, TextInput, ScrollView, Image } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 
 interface User {
-  user_id: number;
+  id: number;
   email: string;
   name: string;
   department?: string;
@@ -106,7 +106,8 @@ const styles = StyleSheet.create({
     borderColor: '#7c4dff',
   },
   evaluationIcon: {
-    fontSize: 40,
+    width: 40,
+    height: 40,
     marginBottom: 8,
   },
   evaluationText: {
@@ -118,13 +119,13 @@ const styles = StyleSheet.create({
     color: '#7c4dff',
   },
   commentSection: {
-    marginBottom: 120,
+    marginBottom: 32,
   },
   commentInput: {
     backgroundColor: '#f5f5f5',
     borderRadius: 12,
     padding: 16,
-    minHeight: 120,
+    minHeight: 188,
     textAlignVertical: 'top',
     fontSize: 16,
     color: '#333',
@@ -138,12 +139,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#7c4dff',
     borderRadius: 12,
     paddingVertical: 16,
-    marginHorizontal: 20,
-    alignItems: 'center',
-    position: 'absolute',
-    bottom: 40,
-    left: 0,
-    right: 0,
+    marginTop:0,
+    marginHorizontal: 16,
+    alignItems:'center',
   },
   confirmButtonDisabled: {
     backgroundColor: '#ccc',
@@ -191,20 +189,21 @@ const MyPage3: React.FC = () => {
   const [isExistingReview, setIsExistingReview] = useState<boolean>(false);
   const [existingReviewId, setExistingReviewId] = useState<number | null>(null);
 
+  // ✅ 수정된 부분: icon 속성으로 통일하고 이미지 소스만 저장
   const evaluationOptions = [
-    { type: 'low' as EvaluationType, icon: '😞', text: '별로예요' },
-    { type: 'medium' as EvaluationType, icon: '😊', text: '좋아요' },
-    { type: 'high' as EvaluationType, icon: '😄', text: '최고예요' },
+    { type: 'low' as EvaluationType, icon: require('../assets/face-frown.png'), text: '별로예요' },
+    { type: 'medium' as EvaluationType, icon: require('../assets/face-smile.png'), text: '좋아요' },
+    { type: 'high' as EvaluationType, icon: require('../assets/face-happy.png'), text: '최고예요' },
   ];
 
   // 기존 평가 조회
   const fetchExistingReview = async () => {
     try {
       console.log(`=== 기존 평가 조회 시작 ===`);
-      console.log(`평가자 ID: ${user.user_id}, 피평가자 ID: ${selectedMember.id}, 활동 ID: ${selectedMember.activity_id}`);
+      console.log(`평가자 ID: ${user.id}, 피평가자 ID: ${selectedMember.id}, 활동 ID: ${selectedMember.activity_id}`);
       
       const response = await fetch(
-        `http://10.0.2.2:3000/api/reviews/existing/${user.user_id}/${selectedMember.id}/${selectedMember.activity_id}`
+        `http://10.0.2.2:3000/api/reviews/existing/${user.id}/${selectedMember.id}/${selectedMember.activity_id}`
       );
       
       if (!response.ok) {
@@ -234,7 +233,7 @@ const MyPage3: React.FC = () => {
 
   useEffect(() => {
     fetchExistingReview();
-  }, [user.user_id, selectedMember.id, selectedMember.activity_id]);
+  }, [user.id, selectedMember.id, selectedMember.activity_id]);
 
   const handleEvaluationSelect = (type: EvaluationType) => {
     setSelectedEvaluation(type);
@@ -256,7 +255,7 @@ const MyPage3: React.FC = () => {
     try {
       // 평가 데이터 준비 - 선택된 평가 타입에 따라 값 설정
       const evaluationData = {
-        reviewer_id: user.user_id,
+        reviewer_id: user.id,
         reviewee_id: selectedMember.id,
         related_team_id: selectedMember.activity_id,
         review_high: selectedEvaluation === 'high' ? 1 : 0,
@@ -406,7 +405,8 @@ const MyPage3: React.FC = () => {
               ]}
               onPress={() => handleEvaluationSelect(option.type)}
             >
-              <Text style={styles.evaluationIcon}>{option.icon}</Text>
+              {/* ✅ 수정된 부분: Image 컴포넌트로 아이콘 렌더링 */}
+              <Image source={option.icon} style={styles.evaluationIcon} />
               <Text
                 style={[
                   styles.evaluationText,
@@ -431,7 +431,7 @@ const MyPage3: React.FC = () => {
             maxLength={500}
           />
         </View>
-      </ScrollView>
+      
 
       {/* 확인 버튼 */}
       <TouchableOpacity
@@ -446,6 +446,7 @@ const MyPage3: React.FC = () => {
           {isExistingReview ? '수정하기' : '확인'}
         </Text>
       </TouchableOpacity>
+      </ScrollView>
     </SafeAreaView>
   );
 };

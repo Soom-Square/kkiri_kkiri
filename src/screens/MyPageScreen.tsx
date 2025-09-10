@@ -7,6 +7,7 @@ import { useNavigation, CommonActions } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useAuth } from '../context/AuthContext';
 import { User } from '../types';
+import { launchImageLibrary } from 'react-native-image-picker';
 
 // RootStackParamList 타입 정의 (App.tsx와 동일하게)
 type RootStackParamList = {
@@ -21,6 +22,13 @@ type RootStackParamList = {
       student_number?: string;
       birth?: string;
       profile_picture?: string;
+    };
+    selectedMember?: {
+      id: number;
+      name: string;
+      department: string;
+      activity_id: number;
+      activity_title: string;
     };
   };
   MyPage3: { 
@@ -100,24 +108,72 @@ export default function MyPageScreen() {
     fetchUserData();
   }, [user?.id]);
 
-  const handleImagePicker = () => {
+ const handleImagePicker = () => {
     Alert.alert('프로필 사진 변경', '어떤 방식으로 변경하시겠습니까?', [
       { text: '취소', style: 'cancel' },
       {
-        text: '랜덤 이미지',
+        text: '갤러리에서 선택',
         onPress: () => {
-          const randomId = Math.floor(Math.random() * 1000);
-          setProfileImage(`https://picsum.photos/300/300?random=${randomId}`);
+          launchImageLibrary({ mediaType: 'photo' }, async (response) => {
+            if (response.didCancel) {
+              console.log('User cancelled image picker');
+            } else if (response.errorCode) {
+              Alert.alert('오류', '갤러리 접근 권한이 없거나 오류가 발생했습니다.');
+            } else if (response.assets && response.assets.length > 0) {
+              const selectedImage = response.assets[0];
+              if (selectedImage.uri) {
+                // ✅ 서버에 이미지 업로드 및 프로필 업데이트
+                await updateProfilePicture(selectedImage.uri);
+              }
+            }
+          });
         },
       },
       {
-        text: '기본 이미지',
+        text: '기본 이미지로 변경', // ✅ 버튼 텍스트 변경
         onPress: () => {
           setProfileImage('https://via.placeholder.com/120x120/8B5CF6/FFFFFF?text=USER');
+          // TODO: 기본 이미지로 변경하는 API 호출 로직 추가
         },
       },
     ]);
   };
+
+  // ✅ 추가: 선택된 이미지를 서버에 업로드하고 사용자 정보 갱신
+  const updateProfilePicture = async (imageUri: string) => {
+    if (!user) return;
+    try {
+      const formData = new FormData();
+      formData.append('image', {
+        uri: imageUri,
+        type: 'image/jpeg', // 혹은 파일의 mime 타입에 맞게 변경
+        name: `profile-${user.id}-${Date.now()}.jpg`,
+      });
+
+      const uploadUrl = `${API_BASE_URL}/api/upload/profile/${user.id}`;
+      
+      const res = await fetch(uploadUrl, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        Alert.alert('성공', '프로필 사진이 업데이트되었습니다.');
+        // ✅ 성공 시 사용자 정보를 다시 불러와서 화면을 갱신합니다.
+        await fetchUserData();
+      } else {
+        Alert.alert('오류', data.message || '프로필 사진 업데이트에 실패했습니다.');
+      }
+    } catch (e) {
+      console.error('이미지 업로드 오류:', e);
+      Alert.alert('오류', '이미지 업로드 중 서버 오류가 발생했습니다.');
+    }
+  };
+
 
   const toDateOnly = (iso?: string) => {
     if (!iso) return '';
@@ -327,9 +383,12 @@ export default function MyPageScreen() {
               </View>
             ))}
           </View>
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <Text style={styles.logoutText}>로그아웃</Text>
-          </TouchableOpacity>
+          {/* 변경된 부분: logoutButton을 감싸는 View 추가 */}
+          <View style={styles.logoutButtonWrapper}>
+            <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+              <Text style={styles.logoutText}>로그아웃</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
 
@@ -401,8 +460,19 @@ const styles = StyleSheet.create({
   },
   infoValue: { flex: 1, fontSize: 16, color: '#1F2937' },
   editIconButton: { padding: 5 },
-  logoutButton: { marginTop: 20, paddingVertical: 10, paddingHorizontal: 20 },
-  logoutText: { color: '#EF4444', fontSize: 14, fontWeight: '500' },
+  // 변경된 부분: 새로운 스타일 객체 추가
+  logoutButtonWrapper: {
+    width: 300, // infoCard와 너비를 동일하게 맞춤
+    flexDirection: 'row',
+    justifyContent: 'flex-end', // 로그아웃 버튼을 오른쪽으로 정렬
+    marginTop:4, // 카드와의 간격
+  },
+  logoutButton: {
+    marginTop: 4,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+  },
+  logoutText: { color: '#98A2B3', fontSize: 12, fontWeight: '600', textDecorationLine: 'underline' },
   editModalOverlay: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center',
@@ -423,9 +493,9 @@ const styles = StyleSheet.create({
   tabContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 10,
+    //paddingVertical: 10,
     paddingHorizontal: 30,
-    marginTop: 2,
+    //marginTop: 2,
     borderBottomWidth: 1,
     borderColor: '#E5E7EB',
     backgroundColor: '#FFFFFF',
