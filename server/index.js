@@ -901,7 +901,7 @@ app.put('/api/applications/:id/status', (req, res) => {
     // 1) 신청/모집글/작성자/현재 팀 정보 조회
     const q1 = `
       SELECT a.application_id, a.recruitment_id, a.applicant_id, a.status AS app_status,
-             tr.team_id, tr.required_members, tr.post_name, tr.owner_user_id, tr.status AS recruit_status
+             tr.team_id, tr.required_members, tr.post_name, tr.activity_name, tr.owner_user_id, tr.status AS recruit_status
       FROM applications a
       JOIN team_recruitments tr ON tr.recruitment_id = a.recruitment_id
       WHERE a.application_id = ? FOR UPDATE
