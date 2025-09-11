@@ -13,6 +13,12 @@ import {
   Keyboard,
   ScrollView,
 } from 'react-native';
+import { Platform } from 'react-native';
+
+const API_BASE_URL =
+  Platform.OS === 'android'
+    ? 'http://10.0.2.2:3000'     // Android 에뮬레이터
+    : 'http://localhost:3000';   // iOS 시뮬레이터 (실기기는 http://<맥IP>:3000)
 
 interface User {
   user_id: number;
@@ -45,7 +51,7 @@ const MyPage = ({ user, onLogout, onUpdateUser, onNavigateToSetting, onNavigateT
   const fetchUserData = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch(`http://10.0.2.2:3000/api/user/${user.user_id}`);
+      const response = await fetch(`${API_BASE_URL}/api/user/${user.user_id}`);
       const data = await response.json();
       
       if (data.success && data.user) {
@@ -141,7 +147,7 @@ const MyPage = ({ user, onLogout, onUpdateUser, onNavigateToSetting, onNavigateT
   // 사용자 정보 업데이트 API
   const updateUserInfo = async (field: string, value: string) => {
     try {
-      const url = `http://10.0.2.2:3000/api/user/${currentUser.user_id}`;
+      const url = `${API_BASE_URL}/api/user/${currentUser.user_id}`;
       const body = { [field]: value };
       
       const response = await fetch(url, {

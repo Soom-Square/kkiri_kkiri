@@ -2,7 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Alert, ScrollView } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
+import { Platform } from 'react-native';
 
+const API_BASE_URL =
+  Platform.OS === 'android'
+    ? 'http://10.0.2.2:3000'     // Android 에뮬레이터
+    : 'http://localhost:3000';   // iOS 시뮬레이터 (실기기: http://192.168.x.x:3000)
 interface User {
   id: number;
   email: string;
@@ -223,7 +228,9 @@ const MyPage2: React.FC = () => {
       setDebugInfo(`사용자 ID: ${user.id}로 활동 정보 조회 시작`);
       
       // 1. 사용자의 참여 정보 가져오기
-      const participationResponse = await fetch(`http://10.0.2.2:3000/api/participations/user/${user.id}`);
+      const participationResponse = await fetch(
+        `${API_BASE_URL}/api/participations/user/${user.id}`
+      );
       
       if (!participationResponse.ok) {
         throw new Error(`참여 정보 조회 실패: ${participationResponse.status}`);
@@ -254,7 +261,9 @@ const MyPage2: React.FC = () => {
           setDebugInfo(prev => prev + `\n활동 ${participation.activity_id} 처리 중...`);
           
           // 활동 정보 가져오기
-          const activityResponse = await fetch(`http://10.0.2.2:3000/api/activities/${participation.activity_id}`);
+          const activityResponse = await fetch(
+            `${API_BASE_URL}/api/activities/${participation.activity_id}`
+          );
           
           if (!activityResponse.ok) {
             setDebugInfo(prev => prev + `\n활동 ${participation.activity_id} 정보 조회 실패`);
@@ -289,7 +298,7 @@ const MyPage2: React.FC = () => {
           
           if (memberIds.length > 0) {
             // 멤버 정보 가져오기
-            const membersResponse = await fetch(`http://10.0.2.2:3000/api/users/batch`, {
+            const membersResponse = await fetch(`${API_BASE_URL}/api/users/batch`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',

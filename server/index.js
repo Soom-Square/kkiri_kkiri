@@ -19,7 +19,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 const db = mysql.createConnection({
   host: 'localhost',
   user: 'root',       // MySQL 사용자명
-  password: 'hoya0613', // MySQL 비밀번호
+  password: 'sql1508', // MySQL 비밀번호
   database: 'myappdb',     // 사용할 DB명
 });
 
@@ -123,7 +123,7 @@ app.get('/api/activities/:id', (req, res) => {
       return res.status(404).json({ message: '활동을 찾을 수 없습니다.' });
     }
 
-    res.status(200).json({ success: true, activity: results[0] });
+    res.status(200).json(results[0]);
   });
 });
 
@@ -493,13 +493,13 @@ app.get('/api/participations/user/:id', (req, res) => {
   const sql = `
     SELECT 
       participation_id, 
-      id,
+      user_id,
       activity_id, 
       participated_at,
       participated_with,
       created_at
     FROM user_activity_participations 
-    WHERE id = ?
+    WHERE user_id = ?
     ORDER BY created_at DESC
   `;
   

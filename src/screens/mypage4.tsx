@@ -10,6 +10,12 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
+import { Platform } from 'react-native';
+
+const API_BASE_URL =
+  Platform.OS === 'android'
+    ? 'http://10.0.2.2:3000'     // Android 에뮬레이터
+    : 'http://localhost:3000';   // iOS 시뮬레이터 (실기기는 LAN IP로 교체)
 
 interface EvaluationData {
   review_low: number;
@@ -67,7 +73,7 @@ const MyPage4: React.FC = () => {
       console.log(`=== 평가 데이터 요청 시작 ===`);
       console.log(`사용자 ID: ${user.id}, 타입: ${typeof user.id}`);
       
-      const response = await fetch(`http://10.0.2.2:3000/api/user/${user.id}/evaluations`);
+      const response = await fetch(`${API_BASE_URL}/api/user/${user.id}/evaluations`);
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -95,7 +101,7 @@ const MyPage4: React.FC = () => {
     try {
       console.log(`=== 받은 리뷰 요청 시작 (디버깅 API 활용) ===`);
       
-      const response = await fetch(`http://10.0.2.2:3000/api/reviews/debug`);
+      const response = await fetch(`${API_BASE_URL}/api/reviews/debug`);
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
