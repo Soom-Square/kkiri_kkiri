@@ -73,8 +73,8 @@ const MakeTeamScreen = () => {
     try {
       const payload = {
         owner_user_id: ownerUserId,
-        activity_name: postTitle,               // ← 목록/상세 제목으로 사용
-        //activity_name: activityName,               // 리스트에 보일 제목
+        post_name: postTitle,               // ← 목록/상세 제목으로 사용
+        activity_name: activityName,               // 리스트에 보일 제목
         activity_type: selectedCategory,           // 카테고리
         qualification_department: department,      // 모집학과
         qualification_student_number: null,
@@ -163,7 +163,6 @@ const MakeTeamScreen = () => {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        {/* 팀 이름 */}
         <View style={styles.inputBox}>
           <TextInput
             value={postTitle}

@@ -745,7 +745,7 @@ app.get('/api/team-recruitments', (req, res) => {
   const sql = `
     SELECT
       tr.recruitment_id, tr.owner_user_id, tr.team_id,
-      tr.activity_name, tr.activity_type,
+      tr.post_name, tr.activity_name, tr.activity_type,
       tr.qualification_department, tr.qualification_student_number, tr.qualification_age,
       tr.required_members, tr.activity_period, tr.meeting_type,
       tr.memo, tr.status, tr.created_at
@@ -800,6 +800,7 @@ app.get('/api/team-recruitments/:id', (req, res) => {
 app.post('/api/team-recruitments', (req, res) => {
   const {
     owner_user_id,
+    post_name,
     activity_name,
     activity_type,
     qualification_department,
@@ -812,19 +813,19 @@ app.post('/api/team-recruitments', (req, res) => {
     status = 'OPEN',
   } = req.body;
 
-  if (!owner_user_id || !activity_name || !activity_type || !required_members) {
+  if (!owner_user_id || !post_name || !activity_type || !required_members || !activity_name ) {
     return res.status(400).json({ message: '필수 항목이 누락되었습니다.' });
   }
 
   const sql = `
     INSERT INTO team_recruitments
-    (owner_user_id, activity_name, activity_type, qualification_department, qualification_student_number,
+    (owner_user_id, post_name, activity_name, activity_type, qualification_department, qualification_student_number,
      qualification_age, required_members, activity_period, meeting_type, memo, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
   const values = [
-    owner_user_id, activity_name, activity_type, qualification_department,
+    owner_user_id, post_name, activity_name, activity_type, qualification_department,
     qualification_student_number, qualification_age || null, required_members,
     activity_period, meeting_type, memo, status
   ];
@@ -900,7 +901,7 @@ app.put('/api/applications/:id/status', (req, res) => {
     // 1) 신청/모집글/작성자/현재 팀 정보 조회
     const q1 = `
       SELECT a.application_id, a.recruitment_id, a.applicant_id, a.status AS app_status,
-             tr.team_id, tr.required_members, tr.activity_name, tr.owner_user_id, tr.status AS recruit_status
+             tr.team_id, tr.required_members, tr.post_name, tr.owner_user_id, tr.status AS recruit_status
       FROM applications a
       JOIN team_recruitments tr ON tr.recruitment_id = a.recruitment_id
       WHERE a.application_id = ? FOR UPDATE
