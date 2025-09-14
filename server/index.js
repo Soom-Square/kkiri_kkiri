@@ -1150,14 +1150,41 @@ app.put('/todos/:id', (req, res) => {
 });
 
 // todo 추가
-app.post('/todos', (req, res) => {
-  const { team_id, assigned_user_id, title, scope_start_date, scope_end_date } = req.body;
+// ✅ todo 추가 (로그인 사용자 기준)
+app.post('/todos', requireUser, (req, res) => {
+  const userId = req.user.id;
+  const { team_id, title, scope_type, scope_start_date, scope_end_date } = req.body;
+
+  if (!team_id || !title || !scope_type || !scope_start_date || !scope_end_date) {
+    return res.status(400).json({ error: 'BAD_REQUEST', message: '필수 값 누락' });
+  }
+
+  const sql = `
+    INSERT INTO todos
+      (team_id, assigned_user_id, title, status, scope_type, scope_start_date, scope_end_date)
+    VALUES
+      (?, ?, ?, '미진행', ?, ?, ?)
+  `;
+
   db.query(
-    'INSERT INTO todos (team_id, assigned_user_id, title, scope_start_date, scope_end_date) VALUES (?, ?, ?, ?, ?)',
-    [team_id, assigned_user_id, title, scope_start_date, scope_end_date],
+    sql,
+    [team_id, userId, title, scope_type, scope_start_date, scope_end_date],
     (err, result) => {
-      if (err) return res.status(500).send(err);
-      res.send({ todo_id: result.insertId });
+      if (err) {
+        console.error('❌ INSERT /todos 실패:', err);
+        return res.status(500).json({ error: 'DB_ERROR' });
+      }
+      // 방금 만든 todo를 응답 (프론트가 바로 그릴 수 있게)
+      res.json({
+        todo_id: result.insertId,
+        team_id,
+        assigned_user_id: userId,
+        title,
+        status: '미진행',
+        scope_type,
+        scope_start_date,
+        scope_end_date,
+      });
     }
   );
 });
