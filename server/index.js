@@ -1019,3 +1019,22 @@ console.log('✅ 모든 API가 성공적으로 등록되었습니다');
 console.log('✅ 개선된 리뷰 관련 API가 포함되었습니다');
 console.log('✅ user_activity_participations 테이블에 맞게 수정된 API가 포함되었습니다');
 console.log('✅ users.id 필드 변경에 따른 수정이 완료되었습니다');
+
+
+
+// ActivityScreen
+// GET /users/:id/teams
+app.get('/users/:id/teams', async (req, res) => {
+  const userId = Number(req.params.id);
+  const sql = `
+    SELECT t.team_id AS teamId, t.team_name AS teamName, tm.role AS role
+    FROM team_members tm
+    JOIN teams t ON t.team_id = tm.team_id
+    WHERE tm.user_id = ? AND t.status = 'ACTIVE'
+    ORDER BY t.created_at DESC
+  `;
+  db.query(sql, [userId], (err, rows) => {
+    if (err) return res.status(500).json({ message: 'DB error', err });
+    res.json(rows);
+  });
+});
