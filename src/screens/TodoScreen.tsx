@@ -49,6 +49,8 @@ export default function TodoScreen() {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [loadingTeams, setLoadingTeams] = useState(false);
   const [loadingTodos, setLoadingTodos] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingText, setEditingText] = useState('');
 
   // 섹션별 새 항목 입력 상태
   const [draftFor, setDraftFor] = useState<Scope | null>(null);
@@ -174,6 +176,36 @@ export default function TodoScreen() {
       setDraftText('');
     }
   };
+  // --- 제목 클릭 → 편집 모드 진입 ---
+    const startEdit = (todo: Todo) => {
+    setEditingId(todo.todo_id);
+    setEditingText(todo.title);
+    };
+
+    // --- 편집 저장/삭제 ---
+    const saveEdit = async (todo: Todo) => {
+    const text = editingText.trim();
+
+    try {
+        if (text === '') {
+        // 제목이 비면 삭제
+        await axios.delete(`${API_BASE_URL}/todos/${todo.todo_id}`, { headers: authHeader });
+        setTodos(prev => prev.filter(t => t.todo_id !== todo.todo_id));
+        } else {
+        await axios.put(
+            `${API_BASE_URL}/todos/${todo.todo_id}`,
+            { title: text },
+            { headers: authHeader }
+        );
+        setTodos(prev => prev.map(t => t.todo_id === todo.todo_id ? { ...t, title: text } : t));
+        }
+    } catch (e) {
+        console.error('❌ 편집/삭제 실패:', e);
+    } finally {
+        setEditingId(null);
+        setEditingText('');
+    }
+    };
 
   // 행 렌더
   const TitleWithHighlight = ({ title, status }: { title: string; status: Todo['status'] }) => {
@@ -194,13 +226,52 @@ export default function TodoScreen() {
     );
   };
 
-  const renderRow = (todo: Todo) => (
-    <Pressable key={todo.todo_id} style={styles.row} onPress={() => cycleStatus(todo)}>
-      {renderCheckbox(todo.status)}
-      <View style={{ width: 8 }} />
-      <TitleWithHighlight title={todo.title} status={todo.status} />
-    </Pressable>
-  );
+  const renderRow = (todo: Todo) => {
+    const isEditing = editingId === todo.todo_id;
+    const isDone = todo.status === '완료';
+    const isDoing = todo.status === '진행중';
+
+    return (
+        <View key={todo.todo_id} style={styles.row}>
+        {/* 체크박스: 상태만 순환 */}
+        <Pressable onPress={() => cycleStatus(todo)}>
+            {renderCheckbox(todo.status)}
+        </Pressable>
+
+        <View style={{ width: 8 }} />
+
+        {/* 제목: 보기/편집 전환 */}
+        {isEditing ? (
+            <TextInput
+            value={editingText}
+            onChangeText={setEditingText}
+            placeholder="내용을 입력하세요"
+            placeholderTextColor="#B3B8C3"
+            style={[styles.todoText, styles.input]}
+            autoFocus
+            returnKeyType="done"
+            onSubmitEditing={() => saveEdit(todo)}
+            onBlur={() => saveEdit(todo)}
+            />
+        ) : (
+            <Pressable
+            style={[isDoing && styles.pill]}
+            onPress={() => startEdit(todo)}
+            >
+            <Text
+                style={[
+                styles.todoText,
+                isDone && { textDecorationLine: 'line-through', color: '#9AA0A6' },
+                ]}
+                numberOfLines={2}
+            >
+                {todo.title}
+            </Text>
+            </Pressable>
+        )}
+        </View>
+    );
+  };
 
   // 입력행 렌더
   const renderDraftRow = (scope: Scope) => {

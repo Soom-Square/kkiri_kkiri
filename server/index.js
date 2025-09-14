@@ -1136,17 +1136,39 @@ app.get('/todos/:teamId', requireUser, (req, res) => {
 });
 
 // todo 상태 업데이트
-app.put('/todos/:id', (req, res) => {
+// 제목/상태 수정 (둘 중 하나만 와도 OK)
+app.put('/todos/:id', requireUser, (req, res) => {
   const { id } = req.params;
-  const { status } = req.body;
-  db.query(
-    'UPDATE todos SET status = ? WHERE todo_id = ?',
-    [status, id],
-    (err) => {
-      if (err) return res.status(500).send(err);
-      res.send({ success: true });
-    }
-  );
+  const { title, status } = req.body;
+
+  // 제목을 비워서 보냈다면 삭제 처리 권장 → 클라이언트에서는 DELETE 호출 권장
+  if (typeof title === 'string' && title.trim() === '') {
+    return res.status(400).json({ error: 'EMPTY_TITLE', message: '빈 제목은 허용되지 않습니다. 삭제를 사용하세요.' });
+  }
+
+  const fields = [];
+  const params = [];
+  if (typeof title === 'string') { fields.push('title = ?'); params.push(title.trim()); }
+  if (typeof status === 'string') { fields.push('status = ?'); params.push(status); }
+
+  if (fields.length === 0) return res.status(400).json({ error: 'NO_FIELDS' });
+
+  const sql = `UPDATE todos SET ${fields.join(', ')} WHERE todo_id = ?`;
+  params.push(id);
+
+  db.query(sql, params, (err) => {
+    if (err) return res.status(500).json({ error: 'DB_ERROR' });
+    res.json({ success: true });
+  });
+});
+
+// 투두 삭제
+app.delete('/todos/:id', requireUser, (req, res) => {
+  const { id } = req.params;
+  db.query('DELETE FROM todos WHERE todo_id = ?', [id], (err) => {
+    if (err) return res.status(500).json({ error: 'DB_ERROR' });
+    res.json({ success: true });
+  });
 });
 
 // todo 추가
