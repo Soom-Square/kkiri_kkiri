@@ -901,7 +901,7 @@ app.put('/api/applications/:id/status', (req, res) => {
     // 1) 신청/모집글/작성자/현재 팀 정보 조회
     const q1 = `
       SELECT a.application_id, a.recruitment_id, a.applicant_id, a.status AS app_status,
-             tr.team_id, tr.required_members, tr.post_name, tr.owner_user_id, tr.status AS recruit_status
+             tr.team_id, tr.required_members, tr.post_name, tr.activity_name, tr.owner_user_id, tr.status AS recruit_status
       FROM applications a
       JOIN team_recruitments tr ON tr.recruitment_id = a.recruitment_id
       WHERE a.application_id = ? FOR UPDATE
@@ -1019,3 +1019,194 @@ console.log('✅ 모든 API가 성공적으로 등록되었습니다');
 console.log('✅ 개선된 리뷰 관련 API가 포함되었습니다');
 console.log('✅ user_activity_participations 테이블에 맞게 수정된 API가 포함되었습니다');
 console.log('✅ users.id 필드 변경에 따른 수정이 완료되었습니다');
+
+
+
+// ActivityScreen
+// GET /users/:id/teams
+app.get('/users/:id/teams', async (req, res) => {
+  const userId = Number(req.params.id);
+  const sql = `
+    SELECT t.team_id AS teamId, t.team_name AS teamName, tm.role AS role
+    FROM team_members tm
+    JOIN teams t ON t.team_id = tm.team_id
+    WHERE tm.user_id = ? AND t.status = 'ACTIVE'
+    ORDER BY t.created_at DESC
+  `;
+  db.query(sql, [userId], (err, rows) => {
+    if (err) return res.status(500).json({ message: 'DB error', err });
+    res.json(rows);
+  });
+});
+
+//todo 관련
+// ─────────────────────────────────────────────────────────────
+// 임시 인증 미들웨어: 헤더 x-user-id 또는 req.user.id 사용
+// 실서비스에선 JWT/세션으로 대체하세요.
+// ─────────────────────────────────────────────────────────────
+function requireUser(req, res, next) {
+  // 1) JWT를 쓰는 경우: req.user = { id: decoded.id } 식으로 세팅되어 있어야 함
+  // 2) 임시: x-user-id 헤더로 받기
+  const idFromHeader = req.header('x-user-id');
+  const userId = req.user?.id || idFromHeader;
+
+  if (!userId) {
+    return res.status(401).json({ error: 'UNAUTHORIZED', message: '로그인이 필요합니다.' });
+  }
+  req.user = { id: Number(userId) };
+  next();
+}
+
+// ─────────────────────────────────────────────────────────────
+// 1) GET /my-teams
+//    로그인 사용자가 속한 팀 목록 + 팀 내 역할(role) 반환
+//    반환: [{ team_id, team_name, role }]
+// ─────────────────────────────────────────────────────────────
+app.get('/my-teams', requireUser, (req, res) => {
+  const userId = req.user.id;
+
+  const sql = `
+    SELECT tm.team_id, t.team_name, tm.role
+    FROM team_members tm
+    JOIN teams t ON t.team_id = tm.team_id
+    WHERE tm.user_id = ?
+    ORDER BY t.team_name ASC
+  `;
+
+  db.query(sql, [userId], (err, rows) => {
+    if (err) {
+      console.error('❌ /my-teams 실패:', err);
+      return res.status(500).json({ error: 'DB_ERROR' });
+    }
+    return res.json(rows);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// 2) GET /todos/:teamId
+//    특정 팀의 "로그인 사용자에게 할당된" 투두만 반환
+//    반환: [{ todo_id, title, status, scope_start_date, scope_end_date, scope_type }]
+// ─────────────────────────────────────────────────────────────
+app.get('/todos/:teamId', requireUser, (req, res) => {
+  const userId = req.user.id;
+  const { teamId } = req.params;
+
+  console.log('GET /todos/:teamId', { teamId, userId }); // ✅ 누가 뭘 요청했는지 찍기
+
+  const sql = `
+    SELECT
+      todo_id,
+      title,
+      status,
+      scope_start_date,
+      scope_end_date,
+      -- scope_type 이 NULL이면 기간으로 계산해 보정
+      COALESCE(
+        scope_type,
+        CASE
+          WHEN DATEDIFF(scope_end_date, scope_start_date) = 0 THEN '일일'
+          WHEN DATEDIFF(scope_end_date, scope_start_date) BETWEEN 1 AND 6 THEN '주간'
+          ELSE '월간'
+        END
+      ) AS scope_type
+    FROM todos
+    WHERE team_id = ? AND assigned_user_id = ?
+    ORDER BY
+      FIELD(
+        COALESCE(scope_type,
+          CASE
+            WHEN DATEDIFF(scope_end_date, scope_start_date) = 0 THEN '일일'
+            WHEN DATEDIFF(scope_end_date, scope_start_date) BETWEEN 1 AND 6 THEN '주간'
+            ELSE '월간'
+          END
+        ), '월간','주간','일일'
+      ),
+      scope_start_date ASC,
+      created_at ASC
+  `;
+
+  db.query(sql, [teamId, userId], (err, rows) => {
+    if (err) {
+      console.error('❌ /todos/:teamId 실패:', err);
+      return res.status(500).json({ error: 'DB_ERROR' });
+    }
+    console.log('→ rows.length =', rows.length); // ✅ 결과 개수 확인
+    return res.json(rows);
+  });
+});
+
+// todo 상태 업데이트
+// 제목/상태 수정 (둘 중 하나만 와도 OK)
+app.put('/todos/:id', requireUser, (req, res) => {
+  const { id } = req.params;
+  const { title, status } = req.body;
+
+  // 제목을 비워서 보냈다면 삭제 처리 권장 → 클라이언트에서는 DELETE 호출 권장
+  if (typeof title === 'string' && title.trim() === '') {
+    return res.status(400).json({ error: 'EMPTY_TITLE', message: '빈 제목은 허용되지 않습니다. 삭제를 사용하세요.' });
+  }
+
+  const fields = [];
+  const params = [];
+  if (typeof title === 'string') { fields.push('title = ?'); params.push(title.trim()); }
+  if (typeof status === 'string') { fields.push('status = ?'); params.push(status); }
+
+  if (fields.length === 0) return res.status(400).json({ error: 'NO_FIELDS' });
+
+  const sql = `UPDATE todos SET ${fields.join(', ')} WHERE todo_id = ?`;
+  params.push(id);
+
+  db.query(sql, params, (err) => {
+    if (err) return res.status(500).json({ error: 'DB_ERROR' });
+    res.json({ success: true });
+  });
+});
+
+// 투두 삭제
+app.delete('/todos/:id', requireUser, (req, res) => {
+  const { id } = req.params;
+  db.query('DELETE FROM todos WHERE todo_id = ?', [id], (err) => {
+    if (err) return res.status(500).json({ error: 'DB_ERROR' });
+    res.json({ success: true });
+  });
+});
+
+// todo 추가
+// ✅ todo 추가 (로그인 사용자 기준)
+app.post('/todos', requireUser, (req, res) => {
+  const userId = req.user.id;
+  const { team_id, title, scope_type, scope_start_date, scope_end_date } = req.body;
+
+  if (!team_id || !title || !scope_type || !scope_start_date || !scope_end_date) {
+    return res.status(400).json({ error: 'BAD_REQUEST', message: '필수 값 누락' });
+  }
+
+  const sql = `
+    INSERT INTO todos
+      (team_id, assigned_user_id, title, status, scope_type, scope_start_date, scope_end_date)
+    VALUES
+      (?, ?, ?, '미진행', ?, ?, ?)
+  `;
+
+  db.query(
+    sql,
+    [team_id, userId, title, scope_type, scope_start_date, scope_end_date],
+    (err, result) => {
+      if (err) {
+        console.error('❌ INSERT /todos 실패:', err);
+        return res.status(500).json({ error: 'DB_ERROR' });
+      }
+      // 방금 만든 todo를 응답 (프론트가 바로 그릴 수 있게)
+      res.json({
+        todo_id: result.insertId,
+        team_id,
+        assigned_user_id: userId,
+        title,
+        status: '미진행',
+        scope_type,
+        scope_start_date,
+        scope_end_date,
+      });
+    }
+  );
+});

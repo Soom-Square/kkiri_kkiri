@@ -8,3 +8,35 @@ export interface User {
   birth?: string;
   profile_picture?: string;
 }
+
+export type RootStackParamList = {
+  Login: undefined;
+  Register: undefined;
+  MainTabs: { screen?: string; params?: any };
+  InfoDetail: undefined;
+  Settings: { user: User };
+  Evaluation: undefined;
+  TeamFind: undefined;
+  Notifications: undefined;
+  MakeTeam: undefined;
+  MatchingDetail: undefined;
+  MyPage2: { user: User };
+  MyPage3: {
+    user: User;
+    selectedMember: {
+      id: number;
+      name: string;
+      department: string;
+      activity_id: number;
+      activity_title: string;
+    };
+  };
+  MyPage4: { user: User };
+
+  // Activity 관련
+  ActivityScreen: undefined;
+  ActivitySettingScreen: undefined;
+  NotificationScreen: undefined;
+  MyActivityScreen: undefined;
+  TodoScreen: undefined;
+};
