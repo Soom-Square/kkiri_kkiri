@@ -158,6 +158,16 @@ export default function ActivityScreen() {
       </View>
 
       {/* 여기 아래부터는 다음 단계 UI(진행률 바 등)를 이어서 만들면 됨 */}
+      {/* ✅ 플러스 버튼 */}
+      <Pressable
+        style={styles.fab}
+        onPress={() => navigation.navigate('TodoScreen')}
+      >
+        <Image
+          source={require('../assets/plus-circle.png')}
+          style={{ width: 56, height: 56 }}
+        />
+      </Pressable>
     </View>
     </SafeAreaView>
   );
@@ -248,5 +258,16 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
     color: '#1F2A37', // 짙은 남색 느낌
+  },
+    // ✅ 플로팅 액션 버튼 스타일
+  fab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 40,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 5, // Android 그림자
   },
 });

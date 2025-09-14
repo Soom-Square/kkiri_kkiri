@@ -22,6 +22,9 @@ import MyPage2 from './src/screens/mypage2';
 import MyPage3 from './src/screens/mypage3';
 import MyPage4 from './src/screens/mypage4';
 
+import TodoScreen from './src/screens/TodoScreen';
+
+
 import { User } from './src/types';
 import type { RootStackParamList } from './src/types';
 
@@ -136,6 +139,15 @@ export default function App() {
               headerShown: false, // MyPage4에서 자체 헤더를 사용
             }}
           />
+          <Stack.Screen
+          name="TodoScreen"
+          component={TodoScreen}
+          options={{
+            title: '할 일 추가',
+            headerBackTitle: '',
+            headerTitleAlign: 'center',
+          }}
+        />
         </Stack.Navigator>
       </NavigationContainer>
     </AuthProvider>

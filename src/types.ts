@@ -38,4 +38,5 @@ export type RootStackParamList = {
   ActivitySettingScreen: undefined;
   NotificationScreen: undefined;
   MyActivityScreen: undefined;
+  TodoScreen: undefined;
 };

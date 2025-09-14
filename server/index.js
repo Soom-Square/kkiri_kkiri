@@ -1038,3 +1038,126 @@ app.get('/users/:id/teams', async (req, res) => {
     res.json(rows);
   });
 });
+
+//todo 관련
+// ─────────────────────────────────────────────────────────────
+// 임시 인증 미들웨어: 헤더 x-user-id 또는 req.user.id 사용
+// 실서비스에선 JWT/세션으로 대체하세요.
+// ─────────────────────────────────────────────────────────────
+function requireUser(req, res, next) {
+  // 1) JWT를 쓰는 경우: req.user = { id: decoded.id } 식으로 세팅되어 있어야 함
+  // 2) 임시: x-user-id 헤더로 받기
+  const idFromHeader = req.header('x-user-id');
+  const userId = req.user?.id || idFromHeader;
+
+  if (!userId) {
+    return res.status(401).json({ error: 'UNAUTHORIZED', message: '로그인이 필요합니다.' });
+  }
+  req.user = { id: Number(userId) };
+  next();
+}
+
+// ─────────────────────────────────────────────────────────────
+// 1) GET /my-teams
+//    로그인 사용자가 속한 팀 목록 + 팀 내 역할(role) 반환
+//    반환: [{ team_id, team_name, role }]
+// ─────────────────────────────────────────────────────────────
+app.get('/my-teams', requireUser, (req, res) => {
+  const userId = req.user.id;
+
+  const sql = `
+    SELECT tm.team_id, t.team_name, tm.role
+    FROM team_members tm
+    JOIN teams t ON t.team_id = tm.team_id
+    WHERE tm.user_id = ?
+    ORDER BY t.team_name ASC
+  `;
+
+  db.query(sql, [userId], (err, rows) => {
+    if (err) {
+      console.error('❌ /my-teams 실패:', err);
+      return res.status(500).json({ error: 'DB_ERROR' });
+    }
+    return res.json(rows);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// 2) GET /todos/:teamId
+//    특정 팀의 "로그인 사용자에게 할당된" 투두만 반환
+//    반환: [{ todo_id, title, status, scope_start_date, scope_end_date, scope_type }]
+// ─────────────────────────────────────────────────────────────
+app.get('/todos/:teamId', requireUser, (req, res) => {
+  const userId = req.user.id;
+  const { teamId } = req.params;
+
+  console.log('GET /todos/:teamId', { teamId, userId }); // ✅ 누가 뭘 요청했는지 찍기
+
+  const sql = `
+    SELECT
+      todo_id,
+      title,
+      status,
+      scope_start_date,
+      scope_end_date,
+      -- scope_type 이 NULL이면 기간으로 계산해 보정
+      COALESCE(
+        scope_type,
+        CASE
+          WHEN DATEDIFF(scope_end_date, scope_start_date) = 0 THEN '일일'
+          WHEN DATEDIFF(scope_end_date, scope_start_date) BETWEEN 1 AND 6 THEN '주간'
+          ELSE '월간'
+        END
+      ) AS scope_type
+    FROM todos
+    WHERE team_id = ? AND assigned_user_id = ?
+    ORDER BY
+      FIELD(
+        COALESCE(scope_type,
+          CASE
+            WHEN DATEDIFF(scope_end_date, scope_start_date) = 0 THEN '일일'
+            WHEN DATEDIFF(scope_end_date, scope_start_date) BETWEEN 1 AND 6 THEN '주간'
+            ELSE '월간'
+          END
+        ), '월간','주간','일일'
+      ),
+      scope_start_date ASC,
+      created_at ASC
+  `;
+
+  db.query(sql, [teamId, userId], (err, rows) => {
+    if (err) {
+      console.error('❌ /todos/:teamId 실패:', err);
+      return res.status(500).json({ error: 'DB_ERROR' });
+    }
+    console.log('→ rows.length =', rows.length); // ✅ 결과 개수 확인
+    return res.json(rows);
+  });
+});
+
+// todo 상태 업데이트
+app.put('/todos/:id', (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  db.query(
+    'UPDATE todos SET status = ? WHERE todo_id = ?',
+    [status, id],
+    (err) => {
+      if (err) return res.status(500).send(err);
+      res.send({ success: true });
+    }
+  );
+});
+
+// todo 추가
+app.post('/todos', (req, res) => {
+  const { team_id, assigned_user_id, title, scope_start_date, scope_end_date } = req.body;
+  db.query(
+    'INSERT INTO todos (team_id, assigned_user_id, title, scope_start_date, scope_end_date) VALUES (?, ?, ?, ?, ?)',
+    [team_id, assigned_user_id, title, scope_start_date, scope_end_date],
+    (err, result) => {
+      if (err) return res.status(500).send(err);
+      res.send({ todo_id: result.insertId });
+    }
+  );
+});
