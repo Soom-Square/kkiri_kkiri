@@ -2,6 +2,7 @@ const express = require('express');
 const mysql = require('mysql2');
 const cors = require('cors');
 const bodyParser = require('body-parser');
+const fs = require('fs'); // ✅ 추가: 파일 시스템 모듈
 
 const app = express();
 const PORT = 3000;
@@ -15,11 +16,18 @@ const path = require('path');
 // uploads 폴더를 정적으로 서빙
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// ✅ 추가: uploads/profiles 디렉토리 자동 생성
+const profilesDir = path.join(__dirname, 'uploads', 'profiles');
+if (!fs.existsSync(profilesDir)) {
+  fs.mkdirSync(profilesDir, { recursive: true });
+  console.log('📁 uploads/profiles 디렉토리 생성됨');
+}
+
 // MySQL 연결 설정
 const db = mysql.createConnection({
   host: 'localhost',
   user: 'root',       // MySQL 사용자명
-  password: 'sql1508', // MySQL 비밀번호
+  password: 'hoya0613', // MySQL 비밀번호
   database: 'myappdb',     // 사용할 DB명
 });
 
@@ -692,49 +700,271 @@ app.get('/api/activities/:activity_id/participants', (req, res) => {
   });
 });
 
-// 11. 프로필 이미지 업로드.
-// multer 설정 - 프로필 이미지 업로드용
-// ✅ 추가: 프로필 이미지를 위한 별도의 스토리지 설정
+// ✅ 수정된 프로필 이미지 업로드 섹션
+// ═══════════════════════════════════════════════════════════
+// 11. 프로필 이미지 업로드 (개선된 버전)
+// ═══════════════════════════════════════════════════════════
+
+// ✅ 개선된 프로필 이미지용 multer 설정
 const profileStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, './uploads/profiles/');
+    cb(null, profilesDir); // 위에서 생성한 디렉토리 사용
   },
   filename: (req, file, cb) => {
-    cb(null, req.params.id + '-' + Date.now() + path.extname(file.originalname));
-  },
+    // 파일명: profile_userId_timestamp.확장자
+    const userId = req.params.id;
+    const timestamp = Date.now();
+    const ext = path.extname(file.originalname);
+    cb(null, `profile_${userId}_${timestamp}${ext}`);
+  }
 });
 
-const uploadProfile = multer({ storage: profileStorage });
+// ✅ 파일 크기 제한 및 타입 검증 추가
+const uploadProfile = multer({ 
+  storage: profileStorage,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB 제한
+  },
+  fileFilter: (req, file, cb) => {
+    // 이미지 파일만 허용
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('이미지 파일만 업로드 가능합니다.'));
+    }
+  }
+});
 
-// ✅ 추가: 프로필 사진 업로드 및 업데이트 API
+// ✅ 개선된 프로필 사진 업로드 및 업데이트 API
 app.post('/api/upload/profile/:id', uploadProfile.single('image'), (req, res) => {
   const userId = req.params.id;
   
+  console.log(`=== 프로필 사진 업로드 요청 ===`);
+  console.log(`사용자 ID: ${userId}`);
+  console.log(`업로드된 파일:`, req.file);
+  
+  if (!userId) {
+    return res.status(400).json({ success: false, message: '사용자 ID가 필요합니다' });
+  }
+  
   if (!req.file) {
-    return res.status(400).json({ success: false, message: '파일이 없습니다.' });
+    return res.status(400).json({ success: false, message: '업로드할 이미지가 없습니다' });
   }
 
-  // ✅ 업로드된 파일의 URL
-  const profileImageUrl = `${req.protocol}://${req.get('host')}/uploads/profiles/${req.file.filename}`;
+    // ✅ 새로운 이미지 URL 생성
+  const newProfileImageUrl = `http://localhost:${PORT}/uploads/profiles/${req.file.filename}`;
+  
+  console.log(`생성된 이미지 URL: ${newProfileImageUrl}`);
+  // ✅ 업로드된 파일의 URL 생성 (정적 파일 서빙 경로에 맞춤)
+  const profileImageUrl = `http://localhost:${PORT}/uploads/profiles/${req.file.filename}`;
+  
+  console.log(`생성된 이미지 URL: ${profileImageUrl}`);
 
-  // ✅ DB에서 사용자 프로필 사진 URL 업데이트
-  const sql = 'UPDATE users SET profile_picture = ? WHERE id = ?';
-  db.query(sql, [profileImageUrl, userId], (err, result) => {
-    if (err) {
-      console.error('DB 프로필 사진 업데이트 오류:', err);
-      return res.status(500).json({ success: false, message: '서버 오류' });
+  // ✅ 먼저 기존 프로필 사진 정보 조회
+  const selectQuery = 'SELECT profile_picture FROM users WHERE id = ?';
+  
+  db.query(selectQuery, [userId], (selectErr, selectResults) => {
+    if (selectErr) {
+      console.error('❌ 기존 프로필 사진 조회 오류:', selectErr);
+      // 새로 업로드된 파일 삭제
+      try {
+        fs.unlinkSync(req.file.path);
+        console.log('업로드된 파일 삭제됨 (조회 오류로 인해)');
+      } catch (unlinkError) {
+        console.error('파일 삭제 오류:', unlinkError);
+      }
+      return res.status(500).json({ 
+        success: false, 
+        message: '기존 프로필 사진 조회에 실패했습니다',
+        error: selectErr.message 
+      });
     }
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ success: false, message: '사용자를 찾을 수 없습니다' });
+    if (selectResults.length === 0) {
+      // 사용자가 없음
+      try {
+        fs.unlinkSync(req.file.path);
+        console.log('업로드된 파일 삭제됨 (사용자 없음)');
+      } catch (unlinkError) {
+        console.error('파일 삭제 오류:', unlinkError);
+      }
+      return res.status(404).json({ 
+        success: false, 
+        message: '사용자를 찾을 수 없습니다' 
+      });
     }
 
-    res.json({ success: true, message: '프로필 사진이 성공적으로 업데이트되었습니다', profile_picture: profileImageUrl });
+    const currentProfilePicture = selectResults[0].profile_picture;
+    
+    // ✅ DB에서 새 프로필 사진 URL 업데이트
+    const updateQuery = 'UPDATE users SET profile_picture = ? WHERE id = ?';
+    
+    db.query(updateQuery, [newProfileImageUrl, userId], (updateErr, updateResult) => {
+      if (updateErr) {
+        console.error('❌ DB 프로필 사진 업데이트 오류:', updateErr);
+        
+        // 새로 업로드된 파일 삭제
+        try {
+          fs.unlinkSync(req.file.path);
+          console.log('업로드된 파일 삭제됨 (DB 오류로 인해)');
+        } catch (unlinkError) {
+          console.error('파일 삭제 오류:', unlinkError);
+        }
+        
+        return res.status(500).json({ 
+          success: false, 
+          message: '데이터베이스 업데이트에 실패했습니다',
+          error: updateErr.message 
+        });
+      }
+
+      if (updateResult.affectedRows === 0) {
+        // 사용자를 찾을 수 없음
+        try {
+          fs.unlinkSync(req.file.path);
+          console.log('업로드된 파일 삭제됨 (사용자 없음)');
+        } catch (unlinkError) {
+          console.error('파일 삭제 오류:', unlinkError);
+        }
+        
+        return res.status(404).json({ 
+          success: false, 
+          message: '사용자를 찾을 수 없습니다' 
+        });
+      }
+
+      // ✅ DB 업데이트 성공 후 기존 프로필 사진 파일 삭제
+      if (currentProfilePicture) {
+        deleteOldProfileImage(currentProfilePicture);
+      }
+
+      console.log(`✅ 사용자 ${userId}의 프로필 사진 업데이트 완료: ${newProfileImageUrl}`);
+      
+      res.json({ 
+        success: true, 
+        message: '프로필 사진이 성공적으로 업데이트되었습니다', 
+        imageUrl: newProfileImageUrl 
+      });
+    });
   });
 });
 
-app.use('/uploads/profiles', express.static(path.join(__dirname, 'uploads', 'profiles')));
+// ✅ 기존 프로필 이미지 파일 삭제 함수
+function deleteOldProfileImage(profilePictureUrl) {
+  if (!profilePictureUrl) return;
+  
+  try {
+    // URL에서 파일명 추출
+    // 예: "http://localhost:3000/uploads/profiles/profile_3_1679123456789.jpg" 
+    // -> "profile_3_1679123456789.jpg"
+    const urlParts = profilePictureUrl.split('/');
+    const filename = urlParts[urlParts.length - 1];
+    
+    // 파일 경로 생성
+    const filePath = path.join(profilesDir, filename);
+    
+    console.log(`기존 프로필 이미지 삭제 시도: ${filePath}`);
+    
+    // 파일이 존재하는지 확인 후 삭제
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      console.log(`✅ 기존 프로필 이미지 삭제 완료: ${filename}`);
+    } else {
+      console.log(`⚠️ 삭제할 파일이 존재하지 않음: ${filename}`);
+    }
+  } catch (error) {
+    console.error('❌ 기존 프로필 이미지 삭제 오류:', error);
+    // 파일 삭제 실패는 치명적이지 않으므로 계속 진행
+  }
+}
 
+// ✅ 사용자 정보 수정 API도 업데이트 (기본 이미지로 변경 시 기존 파일 삭제)
+app.put('/api/user/:id', (req, res) => {
+  const userId = req.params.id;
+  const updates = req.body;
+
+  const allowedFields = ['name', 'email', 'department', 'student_number', 'birth', 'profile_picture'];
+  let updateFields = [];
+  let updateValues = [];
+
+  for (const field in updates) {
+    if (allowedFields.includes(field)) {
+      updateFields.push(`${field} = ?`);
+      updateValues.push(updates[field]);
+    }
+  }
+
+  if (updateFields.length === 0) {
+    return res.status(400).json({ success: false, message: '업데이트할 필드가 없습니다' });
+  }
+
+  // ✅ profile_picture를 null로 변경하는 경우 기존 파일 삭제
+  const isProfilePictureUpdate = updates.hasOwnProperty('profile_picture');
+  const newProfilePicture = updates.profile_picture;
+
+  if (isProfilePictureUpdate) {
+    // 먼저 기존 프로필 사진 URL 조회
+    const selectQuery = 'SELECT profile_picture FROM users WHERE id = ?';
+    
+    db.query(selectQuery, [userId], (selectErr, selectResults) => {
+      if (selectErr) {
+        console.error('기존 프로필 사진 조회 오류:', selectErr);
+        return res.status(500).json({ success: false, message: '서버 오류' });
+      }
+
+      if (selectResults.length === 0) {
+        return res.status(404).json({ success: false, message: '사용자를 찾을 수 없습니다' });
+      }
+
+      const currentProfilePicture = selectResults[0].profile_picture;
+
+      // DB 업데이트 실행
+      const updateQuery = `UPDATE users SET ${updateFields.join(', ')} WHERE id = ?`;
+      updateValues.push(userId);
+
+      db.query(updateQuery, updateValues, (updateErr, result) => {
+        if (updateErr) {
+          console.error('사용자 수정 오류:', updateErr);
+          return res.status(500).json({ success: false, message: '서버 오류' });
+        }
+
+        if (result.affectedRows === 0) {
+          return res.status(404).json({ success: false, message: '사용자를 찾을 수 없습니다' });
+        }
+
+        // ✅ 업데이트 성공 후 기존 파일 삭제 (null로 변경되는 경우)
+        if (newProfilePicture === null && currentProfilePicture) {
+          deleteOldProfileImage(currentProfilePicture);
+          console.log(`사용자 ${userId}의 프로필 사진을 기본 이미지로 변경하고 기존 파일 삭제`);
+        }
+
+        res.json({ success: true, message: '사용자 정보가 업데이트되었습니다' });
+      });
+    });
+  } else {
+    // profile_picture 변경이 아닌 경우 기존 로직 유지
+    const sql = `UPDATE users SET ${updateFields.join(', ')} WHERE id = ?`;
+    updateValues.push(userId);
+
+    db.query(sql, updateValues, (err, result) => {
+      if (err) {
+        console.error('사용자 수정 오류:', err);
+        return res.status(500).json({ success: false, message: '서버 오류' });
+      }
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ success: false, message: '사용자를 찾을 수 없습니다' });
+      }
+
+      res.json({ success: true, message: '사용자 정보가 업데이트되었습니다' });
+    });
+  }
+});
+
+// ✅ 정적 파일 서빙 설정 (profiles 디렉토리)
+app.use('/uploads/profiles', express.static(profilesDir));
+
+console.log('✅ 프로필 이미지 업로드 기능이 개선되었습니다');
 
 /* ======================
    Team Recruitments & Applications APIs
