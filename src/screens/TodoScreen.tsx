@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -11,9 +12,12 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Alert,
+  ToastAndroid
 } from 'react-native';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import { useNavigation } from '@react-navigation/native';
 
 const API_BASE_URL =
   Platform.OS === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
@@ -25,7 +29,6 @@ const INPUT_BG = '#F2F4F7';
 const TEXT_MAIN = '#101828';
 const TEXT_HINT = '#667085';
 
-// 타입
 type Scope = '월간' | '주간' | '일일';
 
 type Todo = {
@@ -40,7 +43,7 @@ type Todo = {
 type Team = {
   team_id: number;
   team_name: string;
-  role: string;
+  part: string;
 };
 
 type Period = { start: string; end: string; label: string };
@@ -66,6 +69,31 @@ const monthRangeFrom = (anchor: Date) => {
   return { s, e };
 };
 
+// ----- 주차 라벨: "1일 월~목은 해당달 1주차, 금~일은 전달 마지막 주" 규칙 -----
+const koreanWeekOrdinal = (n: number) =>
+  ['첫째', '둘째', '셋째', '넷째', '다섯째', '여섯째'][n - 1] ?? `${n}째`;
+
+const weekLabelByMonth = (weekStart: Date) => {
+  const y = weekStart.getFullYear();
+  const m = weekStart.getMonth(); // 0~11
+  const firstDay = new Date(y, m, 1);
+  const dow = firstDay.getDay(); // 0=일,1=월,...
+
+  let firstWeekStart: Date;
+  if (dow >= 1 && dow <= 4) {
+    // 1일이 월~목 → 그 주가 1주차(그 주 월요일이 firstWeekStart)
+    firstWeekStart = new Date(firstDay);
+    firstWeekStart.setDate(firstDay.getDate() - (dow - 1));
+  } else {
+    // 1일이 금~일 → 1주차는 다음 주 월요일부터
+    firstWeekStart = new Date(firstDay);
+    firstWeekStart.setDate(firstDay.getDate() + (8 - dow));
+  }
+
+  const n = Math.floor((+weekStart - +firstWeekStart) / (7 * 24 * 3600 * 1000)) + 1;
+  return `${m + 1}월 ${koreanWeekOrdinal(n)}주`;
+};
+
 const periodOf = (scope: Scope, anchor: Date): Period => {
   if (scope === '일일') {
     const s = ymd(anchor);
@@ -76,7 +104,7 @@ const periodOf = (scope: Scope, anchor: Date): Period => {
     return {
       start: ymd(s),
       end: ymd(e),
-      label: weekLabelByMonth(s),
+      label: weekLabelByMonth(s), // 규칙 적용 라벨
     };
   }
   const { s, e } = monthRangeFrom(anchor);
@@ -87,36 +115,8 @@ const periodOf = (scope: Scope, anchor: Date): Period => {
   };
 };
 
-// 주차 라벨 (UI 전용)
-const koreanWeekOrdinal = (n: number) =>
-  ['첫째','둘째','셋째','넷째','다섯째','여섯째'][n - 1] ?? `${n}째`;
-
-// 전달의 마지막 주 처리 규칙 포함
-const weekLabelByMonth = (weekStart: Date) => {
-  const y = weekStart.getFullYear();
-  const m = weekStart.getMonth(); // 0~11
-  const firstDay = new Date(y, m, 1);
-  const dow = firstDay.getDay(); // 0=일,1=월,...
-
-  let firstWeekStart: Date;
-
-  // 1일이 월~목
-  if (dow >= 1 && dow <= 4) {
-    // 1일이 속한 주가 첫째주
-    firstWeekStart = new Date(firstDay);
-    firstWeekStart.setDate(firstDay.getDate() - (dow - 1)); // 그 주 월요일
-  } else {
-    // 1일이 금~일 → 첫째주는 그 다음주
-    firstWeekStart = new Date(firstDay);
-    firstWeekStart.setDate(firstDay.getDate() + (8 - dow)); // 다음주 월요일
-  }
-
-  // 현재 주차 계산
-  const n = Math.floor((+weekStart - +firstWeekStart) / (7 * 24 * 3600 * 1000)) + 1;
-  return `${m + 1}월 ${koreanWeekOrdinal(n)}주`;
-};
-
 export default function TodoScreen() {
+  const navigation = useNavigation<any>();
   const { user } = useAuth();
   const authHeader = user ? { 'x-user-id': String(user.id) } : undefined;
 
@@ -151,6 +151,10 @@ export default function TodoScreen() {
   const [draftFor, setDraftFor] = useState<Scope | null>(null);
   const [draftText, setDraftText] = useState('');
   const inputRef = useRef<TextInput>(null);
+
+  // part 수정 모달
+  const [partModalVisible, setPartModalVisible] = useState(false);
+  const [partInput, setPartInput] = useState('');
 
   // 팀 목록 로딩
   useEffect(() => {
@@ -212,7 +216,6 @@ export default function TodoScreen() {
         { status: newStatus },
         { headers: authHeader }
       );
-      // 모든 섹션에서 동일 ID 업데이트
       setRangeTodos((prev) => {
         const updated: Record<Scope, Todo[]> = { ...prev };
         (Object.keys(prev) as Scope[]).forEach((k) => {
@@ -237,7 +240,6 @@ export default function TodoScreen() {
     const text = editingText.trim();
     try {
       if (text === '') {
-        // 삭제
         await axios.delete(`${API_BASE_URL}/todos/${todo.todo_id}`, { headers: authHeader });
         setRangeTodos((prev) => {
           const updated: Record<Scope, Todo[]> = { ...prev };
@@ -288,14 +290,18 @@ export default function TodoScreen() {
   };
 
   // 새 항목 저장
+  const isSavingRef = useRef(false);
   const submitDraft = async () => {
     if (!draftFor || !draftText.trim() || !selected || !user) {
       setDraftFor(null);
       setDraftText('');
       return;
     }
+    if (isSavingRef.current) return;
+    isSavingRef.current = true;
+
     try {
-      const p = periodOf(draftFor, viewDate[draftFor]); // 현재 보이는 기간으로 저장
+      const p = periodOf(draftFor, viewDate[draftFor]);
       const payload = {
         team_id: selected.team_id,
         title: draftText.trim(),
@@ -314,8 +320,72 @@ export default function TodoScreen() {
     } finally {
       setDraftFor(null);
       setDraftText('');
+      isSavingRef.current = false;
     }
   };
+
+  // 기간 이동
+  const shiftAnchor = (scope: Scope, dir: 1 | -1) => {
+    setViewDate((prev) => {
+      const cur = new Date(prev[scope]);
+      if (scope === '일일') cur.setDate(cur.getDate() + dir);
+      else if (scope === '주간') cur.setDate(cur.getDate() + dir * 7);
+      else cur.setMonth(cur.getMonth() + dir);
+      return { ...prev, [scope]: cur };
+    });
+  };
+
+  // 역할 수정 모달 열기
+  const openPartModal = () => {
+    if (!selected) return;
+    setPartInput(selected.part ?? '');
+    setPartModalVisible(true);
+  };
+
+  const notifyError = (title: string, msg: string) => {
+  if (Platform.OS === 'android') {
+    ToastAndroid.show(`${title}: ${msg}`, ToastAndroid.LONG);
+  } else {
+    Alert.alert(title, msg);
+  }
+};
+
+  const savePart = async () => {
+  if (!selected || !user) return;
+  const newPart = partInput.trim();
+  if (newPart.length === 0) {
+    setPartModalVisible(false);
+    return;
+  }
+
+  try {
+    const res = await axios.put(
+      `${API_BASE_URL}/team-members/${selected.team_id}/part`,
+      { part: newPart },
+      { headers: authHeader }
+    );
+    setSelected((prev) =>
+      prev ? { ...prev, part: res.data.part ?? newPart } : prev
+    );
+    setTeams((prev) =>
+      prev.map((t) =>
+        t.team_id === selected.team_id
+          ? { ...t, part: res.data.part ?? newPart }
+          : t
+      )
+    );
+  } catch (e: any) {
+    const msg =
+      e?.response?.data?.message ||
+      e?.response?.data?.error ||
+      e?.message ||
+      'Unknown';
+    console.error('파트 저장 실패:', e?.response?.data || e);
+    notifyError('파트 저장 실패', String(msg));
+  } finally {
+    setPartModalVisible(false);
+  }
+};
 
   // 행 렌더
   const renderRow = (todo: Todo) => {
@@ -340,8 +410,8 @@ export default function TodoScreen() {
             style={[styles.todoText, styles.input]}
             autoFocus
             returnKeyType="done"
-            onSubmitEditing={() => saveEdit(todo)}
-            onBlur={() => saveEdit(todo)}
+            onSubmitEditing={saveEdit.bind(null, todo)}
+            onBlur={saveEdit.bind(null, todo)}
           />
         ) : (
           <Pressable style={[isDoing && styles.pill]} onPress={() => startEdit(todo)}>
@@ -376,21 +446,11 @@ export default function TodoScreen() {
           style={[styles.todoText, styles.input]}
           returnKeyType="done"
           onSubmitEditing={submitDraft}
-          //onBlur={submitDraft}
+          // onBlur 제거 또는 isSavingRef로 가드가 있으므로 유지해도 됨
+          onBlur={submitDraft}
         />
       </View>
     );
-  };
-
-  // 기간 이동
-  const shiftAnchor = (scope: Scope, dir: 1 | -1) => {
-    setViewDate((prev) => {
-      const cur = new Date(prev[scope]);
-      if (scope === '일일') cur.setDate(cur.getDate() + dir);
-      else if (scope === '주간') cur.setDate(cur.getDate() + dir * 7);
-      else cur.setMonth(cur.getMonth() + dir);
-      return { ...prev, [scope]: cur };
-    });
   };
 
   // 섹션 렌더
@@ -399,19 +459,33 @@ export default function TodoScreen() {
     const list = rangeTodos[scope];
     const loading = loadingByScope[scope];
 
+    // 제목 오른쪽에 기간 네비(← label →), 월간 섹션에는 추가로 '팀원 목표' 버튼
     return (
       <View style={styles.section}>
         <View style={[styles.sectionHeader, { marginBottom: 8 }]}>
           <Text style={styles.sectionTitle}>{scope} 목표</Text>
 
-          <View style={styles.periodNav}>
-            <TouchableOpacity onPress={() => shiftAnchor(scope, -1)} style={styles.navBtn}>
-              <Text style={styles.navBtnText}>{'<'}</Text>
-            </TouchableOpacity>
-            <Text style={styles.periodLabel}>{p.label}</Text>
-            <TouchableOpacity onPress={() => shiftAnchor(scope, 1)} style={styles.navBtn}>
-              <Text style={styles.navBtnText}>{'>'}</Text>
-            </TouchableOpacity>
+          <View style={styles.headerRightGroup}>
+            <View style={styles.periodNav}>
+              <TouchableOpacity onPress={() => shiftAnchor(scope, -1)} style={styles.navBtn}>
+                <Text style={styles.navBtnText}>{'<'}</Text>
+              </TouchableOpacity>
+              <Text style={styles.periodLabel}>{p.label}</Text>
+              <TouchableOpacity onPress={() => shiftAnchor(scope, 1)} style={styles.navBtn}>
+                <Text style={styles.navBtnText}>{'>'}</Text>
+              </TouchableOpacity>
+            </View>
+
+            {scope === '월간' && (
+              <TouchableOpacity
+                style={styles.teamBtn}
+                onPress={() =>
+                  selected && navigation.navigate('TodoTeamScreen', { teamId: selected.team_id })
+                }
+              >
+                <Text style={styles.teamBtnText}>팀원 목표</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
@@ -438,7 +512,7 @@ export default function TodoScreen() {
 
   return (
     <View style={{ flex: 1, padding: 16, backgroundColor: '#FFFFFF' }}>
-      {/* 상단 드롭다운 + 역할 */}
+      {/* 상단 드롭다운 + 역할 + 연필아이콘 */}
       <View style={styles.selectRow}>
         <View style={styles.dropdown}>
           <Pressable style={styles.dropdownBtn} onPress={() => setOpen((v) => !v)}>
@@ -469,7 +543,16 @@ export default function TodoScreen() {
           )}
         </View>
 
-        <Text style={styles.roleText}>{selected?.role ?? '—'}</Text>
+        <View style={styles.partWrap}>
+          <Text style={styles.partText}>{selected?.part ?? '미정'}</Text>
+          <Pressable onPress={openPartModal} hitSlop={8}>
+            <Image
+              source={require('../assets/pencil-01.png')}
+              style={{ width: 18, height: 18, marginLeft: 6 }}
+              resizeMode="contain"
+            />
+          </Pressable>
+        </View>
       </View>
 
       <FlatList
@@ -478,6 +561,33 @@ export default function TodoScreen() {
         renderItem={({ item }) => renderSection(item)}
         contentContainerStyle={{ paddingBottom: 24 }}
       />
+
+      {/* 역할 수정 모달 */}
+      <Modal visible={partModalVisible} transparent animationType="fade" onRequestClose={() => setPartModalVisible(false)}>
+        <View style={styles.modalBg}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>역할 수정</Text>
+            <TextInput
+              value={partInput}
+              onChangeText={setPartInput}
+              placeholder="역할 입력"
+              placeholderTextColor="#A0A0A0"
+              style={styles.modalInput}
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={savePart}
+            />
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
+              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: '#E5E7EB' }]} onPress={() => setPartModalVisible(false)}>
+                <Text style={[styles.modalBtnText, { color: '#374151' }]}>취소</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: PURPLE }]} onPress={savePart}>
+                <Text style={[styles.modalBtnText, { color: '#fff' }]}>저장</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -506,10 +616,13 @@ const styles = StyleSheet.create({
   },
   dropdownItem: { paddingHorizontal: 16, paddingVertical: 12 },
   dropdownItemText: { fontSize: 15, color: TEXT_MAIN },
-  roleText: { fontSize: 16, fontWeight: '700', color: '#1F2A37' },
+
+  partWrap: { flexDirection: 'row', alignItems: 'center' },
+  partText: { fontSize: 16, fontWeight: '700', color: '#1F2A37' },
 
   section: { marginBottom: 24 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  headerRightGroup: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   sectionTitle: { fontSize: 18, fontWeight: '600' },
   emptyText: { fontSize: 14, color: '#999', paddingVertical: 6 },
 
@@ -538,4 +651,32 @@ const styles = StyleSheet.create({
   periodLabel: { fontSize: 15, color: '#111827', paddingHorizontal: 8 },
   navBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: '#F3F4F6' },
   navBtnText: { fontSize: 14, color: '#374151', fontWeight: '700' },
+
+  // 모달
+  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', alignItems: 'center' },
+  modalCard: { width: '86%', backgroundColor: 'white', borderRadius: 14, padding: 16 },
+  modalTitle: { fontSize: 16, fontWeight: '700', color: TEXT_MAIN, marginBottom: 10 },
+  modalInput: {
+    backgroundColor: INPUT_BG,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: TEXT_MAIN,
+    marginBottom: 12,
+  },
+  modalBtn: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
+  modalBtnText: { fontSize: 15, fontWeight: '700' },
+
+  teamBtn: {
+  backgroundColor: '#EFEAFF',
+  paddingHorizontal: 12,
+  paddingVertical: 6,
+  borderRadius: 8,
+  marginLeft: 8,
+},
+teamBtnText: {
+  color: '#7A5AF8',
+  fontSize: 14,
+  fontWeight: '600',
+},
 });
