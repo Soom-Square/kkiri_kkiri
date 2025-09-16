@@ -1296,7 +1296,7 @@ app.get('/my-teams', requireUser, (req, res) => {
   const userId = req.user.id;
 
   const sql = `
-    SELECT tm.team_id, t.team_name, tm.role
+    SELECT tm.team_id, t.team_name, tm.role, tm.part
     FROM team_members tm
     JOIN teams t ON t.team_id = tm.team_id
     WHERE tm.user_id = ?
@@ -1439,4 +1439,29 @@ app.post('/todos', requireUser, (req, res) => {
       });
     }
   );
+});
+
+// 역할 수정 (본인 part)
+// PUT /team-members/:teamId/part
+// 파트 수정 (본인만)
+app.put('/team-members/:teamId/part', requireUser, (req, res) => {
+  const userId = req.user.id;
+  const { teamId } = req.params;
+  const { part } = req.body;
+
+  if (typeof part !== 'string') {
+    return res.status(400).json({ error: 'BAD_REQUEST', message: 'part(문자열)이 필요합니다.' });
+  }
+
+  const sql = `UPDATE team_members SET part = ? WHERE team_id = ? AND user_id = ? LIMIT 1`;
+  db.query(sql, [part.trim(), teamId, userId], (err, result) => {
+    if (err) {
+      console.error('DB_ERROR(update part):', err);
+      return res.status(500).json({ error: 'DB_ERROR' });
+    }
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'NOT_FOUND', message: '해당 팀의 구성원 정보가 없습니다.' });
+    }
+    res.json({ success: true, part: part.trim() });
+  });
 });
