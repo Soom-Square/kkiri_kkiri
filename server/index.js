@@ -27,7 +27,7 @@ if (!fs.existsSync(profilesDir)) {
 const db = mysql.createConnection({
   host: 'localhost',
   user: 'root',       // MySQL 사용자명
-  password: 'hoya0613', // MySQL 비밀번호
+  password: 'sql1508', // MySQL 비밀번호
   database: 'myappdb',     // 사용할 DB명
 });
 
@@ -1317,20 +1317,35 @@ app.get('/my-teams', requireUser, (req, res) => {
 //    특정 팀의 "로그인 사용자에게 할당된" 투두만 반환
 //    반환: [{ todo_id, title, status, scope_start_date, scope_end_date, scope_type }]
 // ─────────────────────────────────────────────────────────────
+// GET /todos/:teamId?scope_type=주간&start=2025-09-08&end=2025-09-14
 app.get('/todos/:teamId', requireUser, (req, res) => {
   const userId = req.user.id;
   const { teamId } = req.params;
+  const { scope_type, start, end } = req.query;
 
-  console.log('GET /todos/:teamId', { teamId, userId }); // ✅ 누가 뭘 요청했는지 찍기
+  const params = [teamId, userId];
+  let where = `team_id = ? AND assigned_user_id = ?`;
+
+  if (scope_type) {
+    where += ` AND COALESCE(scope_type,
+      CASE
+        WHEN DATEDIFF(scope_end_date, scope_start_date) = 0 THEN '일일'
+        WHEN DATEDIFF(scope_end_date, scope_start_date) BETWEEN 1 AND 6 THEN '주간'
+        ELSE '월간'
+      END
+    ) = ?`;
+    params.push(scope_type);
+  }
+
+  // 기간이 주어지면 "겹치는 것"을 모두 보여줌
+  if (start && end) {
+    where += ` AND NOT (scope_end_date < ? OR scope_start_date > ?)`;
+    params.push(start, end);
+  }
 
   const sql = `
     SELECT
-      todo_id,
-      title,
-      status,
-      scope_start_date,
-      scope_end_date,
-      -- scope_type 이 NULL이면 기간으로 계산해 보정
+      todo_id, title, status, scope_start_date, scope_end_date,
       COALESCE(
         scope_type,
         CASE
@@ -1340,28 +1355,13 @@ app.get('/todos/:teamId', requireUser, (req, res) => {
         END
       ) AS scope_type
     FROM todos
-    WHERE team_id = ? AND assigned_user_id = ?
-    ORDER BY
-      FIELD(
-        COALESCE(scope_type,
-          CASE
-            WHEN DATEDIFF(scope_end_date, scope_start_date) = 0 THEN '일일'
-            WHEN DATEDIFF(scope_end_date, scope_start_date) BETWEEN 1 AND 6 THEN '주간'
-            ELSE '월간'
-          END
-        ), '월간','주간','일일'
-      ),
-      scope_start_date ASC,
-      created_at ASC
+    WHERE ${where}
+    ORDER BY scope_start_date ASC, created_at ASC
   `;
 
-  db.query(sql, [teamId, userId], (err, rows) => {
-    if (err) {
-      console.error('❌ /todos/:teamId 실패:', err);
-      return res.status(500).json({ error: 'DB_ERROR' });
-    }
-    console.log('→ rows.length =', rows.length); // ✅ 결과 개수 확인
-    return res.json(rows);
+  db.query(sql, params, (err, rows) => {
+    if (err) return res.status(500).json({ error: 'DB_ERROR' });
+    res.json(rows);
   });
 });
 

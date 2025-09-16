@@ -1,16 +1,16 @@
 // src/screens/TodoScreen.tsx
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  View,
-  Text,
+  ActivityIndicator,
   FlatList,
-  TouchableOpacity,
+  Image,
+  Platform,
   Pressable,
   StyleSheet,
-  Platform,
-  ActivityIndicator,
-  Image,
+  Text,
   TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
@@ -18,6 +18,14 @@ import { useAuth } from '../context/AuthContext';
 const API_BASE_URL =
   Platform.OS === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
 
+// 색상
+const PURPLE = '#7A5AF8';
+const LILAC = '#EFEAFF';
+const INPUT_BG = '#F2F4F7';
+const TEXT_MAIN = '#101828';
+const TEXT_HINT = '#667085';
+
+// 타입
 type Scope = '월간' | '주간' | '일일';
 
 type Todo = {
@@ -25,8 +33,8 @@ type Todo = {
   title: string;
   status: '미진행' | '진행중' | '완료';
   scope_type: Scope;
-  scope_start_date?: string;
-  scope_end_date?: string;
+  scope_start_date: string;
+  scope_end_date: string;
 };
 
 type Team = {
@@ -35,72 +43,234 @@ type Team = {
   role: string;
 };
 
-const PURPLE = '#7A5AF8';
-const LILAC = '#EFEAFF';
-const INPUT_BG = '#F2F4F7';
-const TEXT_MAIN = '#101828';
-const TEXT_HINT = '#667085';
+type Period = { start: string; end: string; label: string };
+
+// 날짜 유틸
+const fmt2 = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+const ymd = (d: Date) =>
+  `${d.getFullYear()}-${fmt2(d.getMonth() + 1)}-${fmt2(d.getDate())}`;
+
+const weekRangeFrom = (anchor: Date) => {
+  const day = anchor.getDay(); // 일0 월1 ...
+  const diffToMon = (day + 6) % 7; // 월0
+  const s = new Date(anchor);
+  s.setDate(anchor.getDate() - diffToMon);
+  const e = new Date(s);
+  e.setDate(s.getDate() + 6);
+  return { s, e };
+};
+
+const monthRangeFrom = (anchor: Date) => {
+  const s = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+  const e = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0);
+  return { s, e };
+};
+
+const periodOf = (scope: Scope, anchor: Date): Period => {
+  if (scope === '일일') {
+    const s = ymd(anchor);
+    return { start: s, end: s, label: `${anchor.getMonth() + 1}월 ${anchor.getDate()}일` };
+  }
+  if (scope === '주간') {
+    const { s, e } = weekRangeFrom(anchor);
+    return {
+      start: ymd(s),
+      end: ymd(e),
+      label: weekLabelByMonth(s),
+    };
+  }
+  const { s, e } = monthRangeFrom(anchor);
+  return {
+    start: ymd(s),
+    end: ymd(e),
+    label: `${s.getFullYear()}년 ${s.getMonth() + 1}월`,
+  };
+};
+
+// 주차 라벨 (UI 전용)
+const koreanWeekOrdinal = (n: number) =>
+  ['첫째','둘째','셋째','넷째','다섯째','여섯째'][n - 1] ?? `${n}째`;
+
+// 전달의 마지막 주 처리 규칙 포함
+const weekLabelByMonth = (weekStart: Date) => {
+  const y = weekStart.getFullYear();
+  const m = weekStart.getMonth(); // 0~11
+  const firstDay = new Date(y, m, 1);
+  const dow = firstDay.getDay(); // 0=일,1=월,...
+
+  let firstWeekStart: Date;
+
+  // 1일이 월~목
+  if (dow >= 1 && dow <= 4) {
+    // 1일이 속한 주가 첫째주
+    firstWeekStart = new Date(firstDay);
+    firstWeekStart.setDate(firstDay.getDate() - (dow - 1)); // 그 주 월요일
+  } else {
+    // 1일이 금~일 → 첫째주는 그 다음주
+    firstWeekStart = new Date(firstDay);
+    firstWeekStart.setDate(firstDay.getDate() + (8 - dow)); // 다음주 월요일
+  }
+
+  // 현재 주차 계산
+  const n = Math.floor((+weekStart - +firstWeekStart) / (7 * 24 * 3600 * 1000)) + 1;
+  return `${m + 1}월 ${koreanWeekOrdinal(n)}주`;
+};
 
 export default function TodoScreen() {
   const { user } = useAuth();
+  const authHeader = user ? { 'x-user-id': String(user.id) } : undefined;
+
+  // 팀 선택
   const [teams, setTeams] = useState<Team[]>([]);
   const [selected, setSelected] = useState<Team | null>(null);
   const [open, setOpen] = useState(false);
-  const [todos, setTodos] = useState<Todo[]>([]);
   const [loadingTeams, setLoadingTeams] = useState(false);
-  const [loadingTodos, setLoadingTodos] = useState(false);
+
+  // 기간 네비게이션
+  const [viewDate, setViewDate] = useState<Record<Scope, Date>>({
+    월간: new Date(),
+    주간: new Date(),
+    일일: new Date(),
+  });
+
+  // 섹션별 목록
+  const [rangeTodos, setRangeTodos] = useState<Record<Scope, Todo[]>>({
+    월간: [],
+    주간: [],
+    일일: [],
+  });
+  const [loadingByScope, setLoadingByScope] = useState<Record<Scope, boolean>>({
+    월간: false,
+    주간: false,
+    일일: false,
+  });
+
+  // 편집/추가 입력
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingText, setEditingText] = useState('');
-
-  // 섹션별 새 항목 입력 상태
   const [draftFor, setDraftFor] = useState<Scope | null>(null);
   const [draftText, setDraftText] = useState('');
   const inputRef = useRef<TextInput>(null);
 
-  const authHeader = user ? { 'x-user-id': String(user.id) } : undefined;
-
-  // 팀 목록
+  // 팀 목록 로딩
   useEffect(() => {
     if (!user) return;
     setLoadingTeams(true);
     axios
       .get<Team[]>(`${API_BASE_URL}/my-teams`, { headers: authHeader })
       .then((res) => {
-        setTeams(res.data ?? []);
-        if (res.data?.length) setSelected(res.data[0]);
+        const data = res.data ?? [];
+        setTeams(data);
+        if (data.length) setSelected(data[0]);
       })
-      .catch((err) => console.error('❌ 팀 목록 불러오기 실패:', err))
+      .catch((err) => console.error('팀 목록 불러오기 실패:', err))
       .finally(() => setLoadingTeams(false));
   }, [user]);
 
-  // 해당 팀의 todo
+  // 기간별 데이터 로딩
+  const fetchRange = async (scope: Scope) => {
+    if (!user || !selected) return;
+    const p = periodOf(scope, viewDate[scope]);
+    try {
+      setLoadingByScope((s) => ({ ...s, [scope]: true }));
+      const { data } = await axios.get<Todo[]>(
+        `${API_BASE_URL}/todos/${selected.team_id}`,
+        {
+          headers: authHeader,
+          params: { scope_type: scope, start: p.start, end: p.end },
+        }
+      );
+      setRangeTodos((prev) => ({ ...prev, [scope]: data ?? [] }));
+    } catch (e) {
+      console.error('기간별 투두 불러오기 실패:', e);
+    } finally {
+      setLoadingByScope((s) => ({ ...s, [scope]: false }));
+    }
+  };
+
+  // 팀이 바뀌면 전 섹션 로딩
   useEffect(() => {
     if (!user || !selected) return;
-    setLoadingTodos(true);
-    axios
-      .get<Todo[]>(`${API_BASE_URL}/todos/${selected.team_id}`, { headers: authHeader })
-      .then((res) => setTodos(res.data ?? []))
-      .catch((err) => console.error('❌ 투두 불러오기 실패:', err))
-      .finally(() => setLoadingTodos(false));
+    (['월간', '주간', '일일'] as Scope[]).forEach(fetchRange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, selected]);
+
+  // 각 섹션 기준일 바뀔 때 해당 섹션만 로딩
+  useEffect(() => { fetchRange('월간'); /* eslint-disable-line */ }, [viewDate['월간']]);
+  useEffect(() => { fetchRange('주간'); /* eslint-disable-line */ }, [viewDate['주간']]);
+  useEffect(() => { fetchRange('일일'); /* eslint-disable-line */ }, [viewDate['일일']]);
 
   // 상태 순환
   const nextStatus = (s: Todo['status']): Todo['status'] =>
     s === '미진행' ? '진행중' : s === '진행중' ? '완료' : '미진행';
 
-  const cycleStatus = (todo: Todo) => {
+  const cycleStatus = async (todo: Todo) => {
     const newStatus = nextStatus(todo.status);
-    axios
-      .put(`${API_BASE_URL}/todos/${todo.todo_id}`, { status: newStatus }, { headers: authHeader })
-      .then(() => {
-        setTodos((prev) =>
-          prev.map((t) => (t.todo_id === todo.todo_id ? { ...t, status: newStatus } : t))
-        );
-      })
-      .catch((err) => console.error('❌ 상태 변경 실패:', err));
+    try {
+      await axios.put(
+        `${API_BASE_URL}/todos/${todo.todo_id}`,
+        { status: newStatus },
+        { headers: authHeader }
+      );
+      // 모든 섹션에서 동일 ID 업데이트
+      setRangeTodos((prev) => {
+        const updated: Record<Scope, Todo[]> = { ...prev };
+        (Object.keys(prev) as Scope[]).forEach((k) => {
+          updated[k] = prev[k].map((t) =>
+            t.todo_id === todo.todo_id ? { ...t, status: newStatus } : t
+          );
+        });
+        return updated;
+      });
+    } catch (e) {
+      console.error('상태 변경 실패:', e);
+    }
   };
 
-  // 체크박스 렌더
+  // 편집 진입/저장
+  const startEdit = (todo: Todo) => {
+    setEditingId(todo.todo_id);
+    setEditingText(todo.title);
+  };
+
+  const saveEdit = async (todo: Todo) => {
+    const text = editingText.trim();
+    try {
+      if (text === '') {
+        // 삭제
+        await axios.delete(`${API_BASE_URL}/todos/${todo.todo_id}`, { headers: authHeader });
+        setRangeTodos((prev) => {
+          const updated: Record<Scope, Todo[]> = { ...prev };
+          (Object.keys(prev) as Scope[]).forEach((k) => {
+            updated[k] = prev[k].filter((t) => t.todo_id !== todo.todo_id);
+          });
+          return updated;
+        });
+      } else {
+        await axios.put(
+          `${API_BASE_URL}/todos/${todo.todo_id}`,
+          { title: text },
+          { headers: authHeader }
+        );
+        setRangeTodos((prev) => {
+          const updated: Record<Scope, Todo[]> = { ...prev };
+          (Object.keys(prev) as Scope[]).forEach((k) => {
+            updated[k] = prev[k].map((t) =>
+              t.todo_id === todo.todo_id ? { ...t, title: text } : t
+            );
+          });
+          return updated;
+        });
+      }
+    } catch (e) {
+      console.error('편집/삭제 실패:', e);
+    } finally {
+      setEditingId(null);
+      setEditingText('');
+    }
+  };
+
+  // 체크박스
   const renderCheckbox = (status: Todo['status']) => {
     const isDone = status === '완료';
     return (
@@ -110,42 +280,14 @@ export default function TodoScreen() {
     );
   };
 
-  // 섹션별 날짜 계산
-  const pad2 = (n: number) => (n < 10 ? `0${n}` : `${n}`);
-  const format = (d: Date) =>
-    `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-
-  const getDatesForScope = (scope: Scope) => {
-    const now = new Date();
-    if (scope === '일일') {
-      const s = format(now);
-      return { start: s, end: s };
-    }
-    if (scope === '주간') {
-      // 월요일 시작 기준
-      const day = now.getDay(); // 일0 월1 ...
-      const diffToMon = (day + 6) % 7; // 월0, 화1...
-      const start = new Date(now);
-      start.setDate(now.getDate() - diffToMon);
-      const end = new Date(start);
-      end.setDate(start.getDate() + 6);
-      return { start: format(start), end: format(end) };
-    }
-    // 월간
-    const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    return { start: format(start), end: format(end) };
-  };
-
-  // “+” 눌렀을 때: 해당 섹션에 입력행 표시
+  // 추가 버튼
   const onPressAdd = (scope: Scope) => {
     setDraftFor(scope);
     setDraftText('');
-    // 약간의 딜레이 후 포커스
     setTimeout(() => inputRef.current?.focus(), 0);
   };
 
-  // 입력 제출 → 서버 저장
+  // 새 항목 저장
   const submitDraft = async () => {
     if (!draftFor || !draftText.trim() || !selected || !user) {
       setDraftFor(null);
@@ -153,96 +295,44 @@ export default function TodoScreen() {
       return;
     }
     try {
-      const { start, end } = getDatesForScope(draftFor);
+      const p = periodOf(draftFor, viewDate[draftFor]); // 현재 보이는 기간으로 저장
       const payload = {
         team_id: selected.team_id,
         title: draftText.trim(),
         scope_type: draftFor,
-        scope_start_date: start,
-        scope_end_date: end,
+        scope_start_date: p.start,
+        scope_end_date: p.end,
       };
       const { data: created } = await axios.post<Todo>(
         `${API_BASE_URL}/todos`,
         payload,
         { headers: authHeader }
       );
-
-      // 목록에 반영
-      setTodos((prev) => [created, ...prev]);
+      setRangeTodos((prev) => ({ ...prev, [draftFor]: [created, ...prev[draftFor]] }));
     } catch (e) {
-      console.error('❌ 새 todo 생성 실패:', e);
+      console.error('새 todo 생성 실패:', e);
     } finally {
       setDraftFor(null);
       setDraftText('');
     }
   };
-  // --- 제목 클릭 → 편집 모드 진입 ---
-    const startEdit = (todo: Todo) => {
-    setEditingId(todo.todo_id);
-    setEditingText(todo.title);
-    };
-
-    // --- 편집 저장/삭제 ---
-    const saveEdit = async (todo: Todo) => {
-    const text = editingText.trim();
-
-    try {
-        if (text === '') {
-        // 제목이 비면 삭제
-        await axios.delete(`${API_BASE_URL}/todos/${todo.todo_id}`, { headers: authHeader });
-        setTodos(prev => prev.filter(t => t.todo_id !== todo.todo_id));
-        } else {
-        await axios.put(
-            `${API_BASE_URL}/todos/${todo.todo_id}`,
-            { title: text },
-            { headers: authHeader }
-        );
-        setTodos(prev => prev.map(t => t.todo_id === todo.todo_id ? { ...t, title: text } : t));
-        }
-    } catch (e) {
-        console.error('❌ 편집/삭제 실패:', e);
-    } finally {
-        setEditingId(null);
-        setEditingText('');
-    }
-    };
 
   // 행 렌더
-  const TitleWithHighlight = ({ title, status }: { title: string; status: Todo['status'] }) => {
-    const isDoing = status === '진행중';
-    const isDone = status === '완료';
-    return (
-      <View style={[isDoing && styles.pill]}>
-        <Text
-          style={[
-            styles.todoText,
-            isDone && { textDecorationLine: 'line-through', color: '#9AA0A6' },
-          ]}
-          numberOfLines={2}
-        >
-          {title}
-        </Text>
-      </View>
-    );
-  };
-
   const renderRow = (todo: Todo) => {
     const isEditing = editingId === todo.todo_id;
     const isDone = todo.status === '완료';
     const isDoing = todo.status === '진행중';
 
     return (
-        <View key={todo.todo_id} style={styles.row}>
-        {/* 체크박스: 상태만 순환 */}
+      <View key={todo.todo_id} style={styles.row}>
         <Pressable onPress={() => cycleStatus(todo)}>
-            {renderCheckbox(todo.status)}
+          {renderCheckbox(todo.status)}
         </Pressable>
 
         <View style={{ width: 8 }} />
 
-        {/* 제목: 보기/편집 전환 */}
         {isEditing ? (
-            <TextInput
+          <TextInput
             value={editingText}
             onChangeText={setEditingText}
             placeholder="내용을 입력하세요"
@@ -252,24 +342,21 @@ export default function TodoScreen() {
             returnKeyType="done"
             onSubmitEditing={() => saveEdit(todo)}
             onBlur={() => saveEdit(todo)}
-            />
+          />
         ) : (
-            <Pressable
-            style={[isDoing && styles.pill]}
-            onPress={() => startEdit(todo)}
-            >
+          <Pressable style={[isDoing && styles.pill]} onPress={() => startEdit(todo)}>
             <Text
-                style={[
+              style={[
                 styles.todoText,
                 isDone && { textDecorationLine: 'line-through', color: '#9AA0A6' },
-                ]}
-                numberOfLines={2}
+              ]}
+              numberOfLines={2}
             >
-                {todo.title}
+              {todo.title}
             </Text>
-            </Pressable>
+          </Pressable>
         )}
-        </View>
+      </View>
     );
   };
 
@@ -278,7 +365,6 @@ export default function TodoScreen() {
     if (draftFor !== scope) return null;
     return (
       <View style={styles.row}>
-        {/* 새 항목은 기본 미진행 (빈 체크박스) */}
         {renderCheckbox('미진행')}
         <View style={{ width: 8 }} />
         <TextInput
@@ -290,29 +376,56 @@ export default function TodoScreen() {
           style={[styles.todoText, styles.input]}
           returnKeyType="done"
           onSubmitEditing={submitDraft}
-          onBlur={submitDraft}
+          //onBlur={submitDraft}
         />
       </View>
     );
   };
 
-  const renderSection = (label: Scope) => {
-    const filtered = todos.filter((t) => t.scope_type === label);
+  // 기간 이동
+  const shiftAnchor = (scope: Scope, dir: 1 | -1) => {
+    setViewDate((prev) => {
+      const cur = new Date(prev[scope]);
+      if (scope === '일일') cur.setDate(cur.getDate() + dir);
+      else if (scope === '주간') cur.setDate(cur.getDate() + dir * 7);
+      else cur.setMonth(cur.getMonth() + dir);
+      return { ...prev, [scope]: cur };
+    });
+  };
+
+  // 섹션 렌더
+  const renderSection = (scope: Scope) => {
+    const p = periodOf(scope, viewDate[scope]);
+    const list = rangeTodos[scope];
+    const loading = loadingByScope[scope];
+
     return (
       <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>{label} 목표</Text>
+        <View style={[styles.sectionHeader, { marginBottom: 8 }]}>
+          <Text style={styles.sectionTitle}>{scope} 목표</Text>
+
+          <View style={styles.periodNav}>
+            <TouchableOpacity onPress={() => shiftAnchor(scope, -1)} style={styles.navBtn}>
+              <Text style={styles.navBtnText}>{'<'}</Text>
+            </TouchableOpacity>
+            <Text style={styles.periodLabel}>{p.label}</Text>
+            <TouchableOpacity onPress={() => shiftAnchor(scope, 1)} style={styles.navBtn}>
+              <Text style={styles.navBtnText}>{'>'}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
-        {renderDraftRow(label)}
+        {renderDraftRow(scope)}
 
-        {filtered.length === 0 && draftFor !== label ? (
+        {loading ? (
+          <ActivityIndicator />
+        ) : list.length === 0 && draftFor !== scope ? (
           <Text style={styles.emptyText}>등록된 할 일이 없어요</Text>
         ) : (
-          filtered.map(renderRow)
+          list.map(renderRow)
         )}
 
-        <Pressable style={styles.addButton} onPress={() => onPressAdd(label)}>
+        <Pressable style={styles.addButton} onPress={() => onPressAdd(scope)}>
           <Image
             source={require('../assets/plus-circle.png')}
             style={{ width: 28, height: 28 }}
@@ -359,17 +472,12 @@ export default function TodoScreen() {
         <Text style={styles.roleText}>{selected?.role ?? '—'}</Text>
       </View>
 
-      {/* 섹션 */}
-      {loadingTodos ? (
-        <ActivityIndicator />
-      ) : (
-        <FlatList
-          data={['월간', '주간', '일일'] as Scope[]}
-          keyExtractor={(item) => item}
-          renderItem={({ item }) => renderSection(item)}
-          contentContainerStyle={{ paddingBottom: 24 }}
-        />
-      )}
+      <FlatList
+        data={['월간', '주간', '일일'] as Scope[]}
+        keyExtractor={(item) => item}
+        renderItem={({ item }) => renderSection(item)}
+        contentContainerStyle={{ paddingBottom: 24 }}
+      />
     </View>
   );
 }
@@ -402,7 +510,7 @@ const styles = StyleSheet.create({
 
   section: { marginBottom: 24 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  sectionTitle: { fontSize: 18, fontWeight: '600', marginBottom: 8 },
+  sectionTitle: { fontSize: 18, fontWeight: '600' },
   emptyText: { fontSize: 14, color: '#999', paddingVertical: 6 },
 
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6 },
@@ -422,10 +530,12 @@ const styles = StyleSheet.create({
   pill: { backgroundColor: LILAC, paddingVertical: 4, paddingHorizontal: 8, borderRadius: 10 },
   todoText: { fontSize: 16, color: TEXT_MAIN },
 
-  input: {
-    flex: 1,
-    paddingVertical: 4,
-  },
+  input: { flex: 1, paddingVertical: 4 },
 
   addButton: { marginTop: 8, alignItems: 'center' },
+
+  periodNav: { flexDirection: 'row', alignItems: 'center' },
+  periodLabel: { fontSize: 15, color: '#111827', paddingHorizontal: 8 },
+  navBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: '#F3F4F6' },
+  navBtnText: { fontSize: 14, color: '#374151', fontWeight: '700' },
 });
