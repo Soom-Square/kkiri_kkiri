@@ -7,7 +7,7 @@ import {
 import axios from 'axios';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
-import type { RootStackParamList } from '../../App'; // 경로: src/screens 기준
+import type { RootStackParamList } from '../types'; // 경로: src/screens 기준
 
 type RootNav = StackNavigationProp<RootStackParamList>;
 // const H_PADDING = 22; // ← 화면 좌우 공통 여백
