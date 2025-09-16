@@ -26,8 +26,8 @@ if (!fs.existsSync(profilesDir)) {
 // MySQL 연결 설정
 const db = mysql.createConnection({
   host: 'localhost',
-  user: 'root',       // MySQL 사용자명
-  password: 'sql1508', // MySQL 비밀번호
+  user: 'root',      // MySQL 사용자명
+  password: 'hoya0613', // MySQL 비밀번호
   database: 'myappdb',     // 사용할 DB명
 });
 
@@ -147,12 +147,6 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-app.post('/api/upload', upload.single('image'), (req, res) => {
-  if (!req.file) return res.status(400).json({ message: '파일이 없습니다.' });
-
-  const imageUrl = `http://localhost:3000/uploads/${req.file.filename}`;
-  res.status(200).json({ imageUrl });
-});
 
 // 헬스 체크 API
 app.get('/api/health', (req, res) => {
@@ -752,7 +746,7 @@ app.post('/api/upload/profile/:id', uploadProfile.single('image'), (req, res) =>
   }
 
     // ✅ 새로운 이미지 URL 생성
-  const newProfileImageUrl = `http://localhost:${PORT}/uploads/profiles/${req.file.filename}`;
+  const newProfileImageUrl = `${req.protocol}://${req.get('host')}/uploads/profiles/${req.file.filename}`;
   
   console.log(`생성된 이미지 URL: ${newProfileImageUrl}`);
   // ✅ 업로드된 파일의 URL 생성 (정적 파일 서빙 경로에 맞춤)
