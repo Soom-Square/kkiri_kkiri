@@ -26,6 +26,16 @@ type Activity = {
 const BASE_URL =
   Platform.OS === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
 
+// 이미지 URL도 교정
+const fixImageUrl = (url?: string | null) => {
+  if (!url) return null;
+  if (Platform.OS === 'android') {
+    return url.replace('http://localhost:3000', 'http://10.0.2.2:3000');
+  }
+  return url;
+};
+
+
 const CATEGORIES = ['공모전', '세미나', '워크숍', '튜터링'] as const;
 
 export default function HomeScreen() {
@@ -117,17 +127,17 @@ export default function HomeScreen() {
         {/* 활동 - 배너 */}
         <Text style={[styles.sectionHeader, { paddingHorizontal: 20 }]}>활동</Text>
         <FlatList
-          horizontal
-          data={bannerItems}
-          keyExtractor={item => String(item.activity_id)}
-          showsHorizontalScrollIndicator={false}
-          ItemSeparatorComponent={() => <View style={{ width: 12 }} />}
-          contentContainerStyle={{ paddingHorizontal: 20, paddingRight: 8 }}
-          renderItem={({ item }) => (
-            <TouchableOpacity onPress={() => goDetail(item.activity_id)} activeOpacity={0.85}>
-              <Image source={{ uri: item.main_image_url! }} style={styles.bannerImage} />
-            </TouchableOpacity>
-          )}
+           horizontal
+            data={bannerItems}
+            keyExtractor={item => String(item.activity_id)}
+            showsHorizontalScrollIndicator={false}
+            ItemSeparatorComponent={() => <View style={{ width: 12 }} />}
+            contentContainerStyle={{ paddingHorizontal: 20, paddingRight: 8 }}
+            renderItem={({ item }) => (
+              <TouchableOpacity onPress={() => goDetail(item.activity_id)} activeOpacity={0.85}>
+                <Image source={{ uri: fixImageUrl(item.main_image_url)! }} style={styles.bannerImage} />
+              </TouchableOpacity>
+         )}
         />
 
         {/* 모집중 */}
