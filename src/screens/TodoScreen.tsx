@@ -491,6 +491,9 @@ export default function TodoScreen() {
           )}
         </View>
 
+        {/* ▼ 섹션 구분선 + 간격 */}
+        <View style={styles.sectionDivider} />
+
         {renderDraftRow(scope)}
         {loading ? (
           <ActivityIndicator />
@@ -595,7 +598,7 @@ export default function TodoScreen() {
 
 const styles = StyleSheet.create({
   selectRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-  dropdown: { flex: 1, marginRight: 12 },
+  dropdown: { flex: 1, marginRight: 12, position: 'relative' },
   dropdownBtn: {
     backgroundColor: INPUT_BG,
     borderRadius: 14,
@@ -607,13 +610,18 @@ const styles = StyleSheet.create({
   dropdownText: { flex: 1, color: TEXT_MAIN, fontSize: 16, fontWeight: '700' },
   chevron: { marginLeft: 8, color: TEXT_HINT, fontSize: 12 },
   dropdownList: {
-    marginTop: 8,
+    position: 'absolute',
+    top: '100%',          // 버튼 바로 아래에 위치
+    left: 0,
+    right: 0,
     backgroundColor: '#fff',
     borderRadius: 12,
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: '#E5E7EB',
     maxHeight: 220,
+    zIndex: 9999,         // iOS
+    elevation: 5,         // Android
   },
   dropdownItem: { paddingHorizontal: 16, paddingVertical: 12 },
   dropdownItemText: { fontSize: 15, color: TEXT_MAIN },
@@ -622,6 +630,14 @@ const styles = StyleSheet.create({
   partText: { fontSize: 16, fontWeight: '700', color: '#1F2A37' },
 
   section: { marginBottom: 24 },
+  // 얇은 회색 줄 + 위아래 여백
+  sectionDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: '#acadb0ff', // 연회색
+    width: '100%',
+    marginTop: 4,
+    marginBottom: 18,
+  },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -666,8 +682,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   periodLabel: { fontSize: 15, color: '#111827', paddingHorizontal: 8 },
-  navBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: '#F3F4F6' },
-  navBtnText: { fontSize: 14, color: '#374151', fontWeight: '700' },
+  navBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: '#FFFFFF' },
+  navBtnText: { fontSize: 18, color: '#374151', fontWeight: '700' },
 
   // 모달
   modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', alignItems: 'center' },

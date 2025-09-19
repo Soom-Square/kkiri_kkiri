@@ -23,6 +23,7 @@ import MyPage3 from './src/screens/mypage3';
 import MyPage4 from './src/screens/mypage4';
 
 import TodoScreen from './src/screens/TodoScreen';
+import TodoTeamScreen from './src/screens/TodoTeamScreen';
 
 
 import { User } from './src/types';
@@ -147,7 +148,16 @@ export default function App() {
             headerBackTitle: '',
             headerTitleAlign: 'center',
           }}
-        />
+         />
+          <Stack.Screen
+            name="TodoTeamScreen"
+            component={TodoTeamScreen}
+            options={{
+              title: '팀원 할 일',
+              headerBackTitle: '',
+              headerTitleAlign: 'center',
+            }}
+          />
         </Stack.Navigator>
       </NavigationContainer>
     </AuthProvider>
