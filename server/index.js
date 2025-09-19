@@ -1459,3 +1459,98 @@ app.put('/team-members/:teamId/part', requireUser, (req, res) => {
     res.json({ success: true, part: part.trim() });
   });
 });
+
+// 팀원 목록
+// GET /teams/:teamId/members  -> [{user_id, name, part}]
+app.get('/teams/:teamId/members', requireUser, (req, res) => {
+  const { teamId } = req.params;
+  const userId = req.user.id;
+  const sql = `
+    SELECT u.id AS user_id, u.name, tm.part
+    FROM team_members tm
+    JOIN users u ON u.id = tm.user_id
+    WHERE tm.team_id = ? AND u.id <> ?
+    ORDER BY u.name ASC
+  `;
+  db.query(sql, [teamId, userId], (err, rows) => {
+    if (err) return res.status(500).json({ error: 'DB_ERROR' });
+    res.json(rows);
+  });
+});
+
+// 팀원 todo 조회
+// GET /teams/:teamId/todos?user_id=3&scope_type=주간&start=2025-09-08&end=2025-09-14
+app.get('/teams/:teamId/todos', requireUser, (req, res) => {
+  const { teamId } = req.params;
+  const { user_id, scope_type, start, end } = req.query;
+
+  if (!user_id) return res.status(400).json({ error: 'BAD_REQUEST', message: 'user_id 필요' });
+
+  const params = [teamId, user_id];
+  let where = `team_id = ? AND assigned_user_id = ?`;
+
+  if (scope_type) {
+    where += ` AND COALESCE(scope_type,
+      CASE
+        WHEN DATEDIFF(scope_end_date, scope_start_date) = 0 THEN '일일'
+        WHEN DATEDIFF(scope_end_date, scope_start_date) BETWEEN 1 AND 6 THEN '주간'
+        ELSE '월간'
+      END
+    ) = ?`;
+    params.push(scope_type);
+  }
+  if (start && end) {
+    where += ` AND NOT (scope_end_date < ? OR scope_start_date > ?)`;
+    params.push(start, end);
+  }
+
+  const sql = `
+    SELECT
+      todo_id, title, status, scope_start_date, scope_end_date,
+      COALESCE(
+        scope_type,
+        CASE
+          WHEN DATEDIFF(scope_end_date, scope_start_date) = 0 THEN '일일'
+          WHEN DATEDIFF(scope_end_date, scope_start_date) BETWEEN 1 AND 6 THEN '주간'
+          ELSE '월간'
+        END
+      ) AS scope_type
+    FROM todos
+    WHERE ${where}
+    ORDER BY scope_start_date ASC, created_at ASC
+  `;
+  db.query(sql, params, (err, rows) => {
+    if (err) return res.status(500).json({ error: 'DB_ERROR' });
+    res.json(rows);
+  });
+});
+
+// 팀원 todo 생성
+// POST /teams/:teamId/todos  { assigned_user_id, title, scope_type, scope_start_date, scope_end_date }
+app.post('/teams/:teamId/todos', requireUser, (req, res) => {
+  const { teamId } = req.params;
+  const { assigned_user_id, title, scope_type, scope_start_date, scope_end_date } = req.body;
+  if (!assigned_user_id || !title || !scope_type || !scope_start_date || !scope_end_date) {
+    return res.status(400).json({ error: 'BAD_REQUEST', message: '필수 값 누락' });
+  }
+  const sql = `
+    INSERT INTO todos
+      (team_id, assigned_user_id, title, status, scope_type, scope_start_date, scope_end_date)
+    VALUES (?, ?, ?, '미진행', ?, ?, ?)
+  `;
+  db.query(sql, [teamId, assigned_user_id, title, scope_type, scope_start_date, scope_end_date],
+    (err, result) => {
+      if (err) return res.status(500).json({ error: 'DB_ERROR' });
+      res.json({
+        todo_id: result.insertId,
+        team_id: Number(teamId),
+        assigned_user_id,
+        title,
+        status: '미진행',
+        scope_type,
+        scope_start_date,
+        scope_end_date,
+      });
+    }
+  );
+});

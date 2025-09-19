@@ -463,10 +463,11 @@ export default function TodoScreen() {
     return (
       <View style={styles.section}>
         <View style={[styles.sectionHeader, { marginBottom: 8 }]}>
-          <Text style={styles.sectionTitle}>{scope} 목표</Text>
+          {/* 왼쪽: 제목 + 기간 네비를 한 줄로 */}
+          <View style={styles.titleRow}>
+            <Text style={styles.sectionTitle}>{scope} 목표</Text>
 
-          <View style={styles.headerRightGroup}>
-            <View style={styles.periodNav}>
+            <View style={styles.periodNavInline}>
               <TouchableOpacity onPress={() => shiftAnchor(scope, -1)} style={styles.navBtn}>
                 <Text style={styles.navBtnText}>{'<'}</Text>
               </TouchableOpacity>
@@ -475,22 +476,25 @@ export default function TodoScreen() {
                 <Text style={styles.navBtnText}>{'>'}</Text>
               </TouchableOpacity>
             </View>
-
-            {scope === '월간' && (
-              <TouchableOpacity
-                style={styles.teamBtn}
-                onPress={() =>
-                  selected && navigation.navigate('TodoTeamScreen', { teamId: selected.team_id })
-                }
-              >
-                <Text style={styles.teamBtnText}>팀원 목표</Text>
-              </TouchableOpacity>
-            )}
           </View>
+
+          {/* 오른쪽: 월간일 때만 팀원 목표 버튼 */}
+          {scope === '월간' && (
+            <TouchableOpacity
+              style={styles.teamBtn}
+              onPress={() =>
+                selected && navigation.navigate('TodoTeamScreen', { teamId: selected.team_id })
+              }
+            >
+              <Text style={styles.teamBtnText}>팀원 목표</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
-        {renderDraftRow(scope)}
+        {/* ▼ 섹션 구분선 + 간격 */}
+        <View style={styles.sectionDivider} />
 
+        {renderDraftRow(scope)}
         {loading ? (
           <ActivityIndicator />
         ) : list.length === 0 && draftFor !== scope ? (
@@ -594,7 +598,7 @@ export default function TodoScreen() {
 
 const styles = StyleSheet.create({
   selectRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-  dropdown: { flex: 1, marginRight: 12 },
+  dropdown: { flex: 1, marginRight: 12, position: 'relative' },
   dropdownBtn: {
     backgroundColor: INPUT_BG,
     borderRadius: 14,
@@ -606,13 +610,18 @@ const styles = StyleSheet.create({
   dropdownText: { flex: 1, color: TEXT_MAIN, fontSize: 16, fontWeight: '700' },
   chevron: { marginLeft: 8, color: TEXT_HINT, fontSize: 12 },
   dropdownList: {
-    marginTop: 8,
+    position: 'absolute',
+    top: '100%',          // 버튼 바로 아래에 위치
+    left: 0,
+    right: 0,
     backgroundColor: '#fff',
     borderRadius: 12,
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: '#E5E7EB',
     maxHeight: 220,
+    zIndex: 9999,         // iOS
+    elevation: 5,         // Android
   },
   dropdownItem: { paddingHorizontal: 16, paddingVertical: 12 },
   dropdownItemText: { fontSize: 15, color: TEXT_MAIN },
@@ -621,8 +630,27 @@ const styles = StyleSheet.create({
   partText: { fontSize: 16, fontWeight: '700', color: '#1F2A37' },
 
   section: { marginBottom: 24 },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  headerRightGroup: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  // 얇은 회색 줄 + 위아래 여백
+  sectionDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: '#acadb0ff', // 연회색
+    width: '100%',
+    marginTop: 4,
+    marginBottom: 18,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  // 제목과 날짜 네비를 한 줄에 붙이기
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,           // RN 0.71+ 지원. 낮은 버전이면 marginRight로 대체
+    flexShrink: 1,     // 라벨 길어도 줄바꿈/수축 되도록
+  },
+
   sectionTitle: { fontSize: 18, fontWeight: '600' },
   emptyText: { fontSize: 14, color: '#999', paddingVertical: 6 },
 
@@ -647,10 +675,15 @@ const styles = StyleSheet.create({
 
   addButton: { marginTop: 8, alignItems: 'center' },
 
-  periodNav: { flexDirection: 'row', alignItems: 'center' },
+
+  // 기존 periodNav 대신 사용
+  periodNavInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   periodLabel: { fontSize: 15, color: '#111827', paddingHorizontal: 8 },
-  navBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: '#F3F4F6' },
-  navBtnText: { fontSize: 14, color: '#374151', fontWeight: '700' },
+  navBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: '#FFFFFF' },
+  navBtnText: { fontSize: 18, color: '#374151', fontWeight: '700' },
 
   // 모달
   modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', alignItems: 'center' },
