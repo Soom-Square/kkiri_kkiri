@@ -1257,7 +1257,7 @@ console.log('✅ users.id 필드 변경에 따른 수정이 완료되었습니�
 app.get('/users/:id/teams', async (req, res) => {
   const userId = Number(req.params.id);
   const sql = `
-    SELECT t.team_id AS teamId, t.team_name AS teamName, tm.role AS role
+    SELECT t.team_id AS teamId, t.team_name AS teamName, tm.part AS part
     FROM team_members tm
     JOIN teams t ON t.team_id = tm.team_id
     WHERE tm.user_id = ? AND t.status = 'ACTIVE'
@@ -1289,14 +1289,14 @@ function requireUser(req, res, next) {
 
 // ─────────────────────────────────────────────────────────────
 // 1) GET /my-teams
-//    로그인 사용자가 속한 팀 목록 + 팀 내 역할(role) 반환
-//    반환: [{ team_id, team_name, role }]
+//    로그인 사용자가 속한 팀 목록 + 팀 내 역할(part) 반환
+//    반환: [{ team_id, team_name, part }]
 // ─────────────────────────────────────────────────────────────
 app.get('/my-teams', requireUser, (req, res) => {
   const userId = req.user.id;
 
   const sql = `
-    SELECT tm.team_id, t.team_name, tm.role, tm.part
+    SELECT tm.team_id, t.team_name, tm.part, tm.part
     FROM team_members tm
     JOIN teams t ON t.team_id = tm.team_id
     WHERE tm.user_id = ?
@@ -1559,4 +1559,37 @@ app.post('/teams/:teamId/todos', requireUser, (req, res) => {
       });
     }
   );
+});
+
+// Activity 페이지 프그래스바
+// GET /teams/:teamId/progress?scope_type=월간&start=YYYY-MM-DD&end=YYYY-MM-DD
+app.get('/teams/:teamId/progress', (req, res) => {
+  const { teamId } = req.params;
+  const { scope_type = '월간', start, end } = req.query;
+
+  if (!start || !end) {
+    return res.status(400).json({ error: 'BAD_REQUEST', message: 'start, end 필요' });
+  }
+
+  const sql = `
+    SELECT 
+      COUNT(*) AS total,
+      SUM(CASE WHEN status = '완료' THEN 1 ELSE 0 END) AS done
+    FROM todos
+    WHERE team_id = ?
+      AND COALESCE(scope_type,
+        CASE
+          WHEN DATEDIFF(scope_end_date, scope_start_date) = 0 THEN '일일'
+          WHEN DATEDIFF(scope_end_date, scope_start_date) BETWEEN 1 AND 6 THEN '주간'
+          ELSE '월간'
+        END
+      ) = ?
+      AND NOT (scope_end_date < ? OR scope_start_date > ?)
+  `;
+  db.query(sql, [teamId, scope_type, start, end], (err, rows) => {
+    if (err) return res.status(500).json({ error: 'DB_ERROR' });
+    const { total = 0, done = 0 } = rows[0] || {};
+    const percent = total === 0 ? 0 : Math.round((done / total) * 100);
+    res.json({ total, done, percent });
+  });
 });
