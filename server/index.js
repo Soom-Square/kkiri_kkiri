@@ -442,7 +442,7 @@ app.get('/api/user/:id/activities', (req, res) => {
   
   // user_id 유효성 검사
   if (!id || id === 'undefined') {
-    console.log('❌ 유효하지 않은 id:', id);
+    console.log('⌐ 유효하지 않은 id:', id);
     return res.status(400).json({ 
       success: false, 
       message: '유효한 사용자 ID가 필요합니다' 
@@ -695,9 +695,9 @@ app.get('/api/activities/:activity_id/participants', (req, res) => {
 });
 
 // ✅ 수정된 프로필 이미지 업로드 섹션
-// ═══════════════════════════════════════════════════════════
+// ╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋
 // 11. 프로필 이미지 업로드 (개선된 버전)
-// ═══════════════════════════════════════════════════════════
+// ╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋╋
 
 // ✅ 개선된 프로필 이미지용 multer 설정
 const profileStorage = multer.diskStorage({
@@ -759,7 +759,7 @@ app.post('/api/upload/profile/:id', uploadProfile.single('image'), (req, res) =>
   
   db.query(selectQuery, [userId], (selectErr, selectResults) => {
     if (selectErr) {
-      console.error('❌ 기존 프로필 사진 조회 오류:', selectErr);
+      console.error('⌐ 기존 프로필 사진 조회 오류:', selectErr);
       // 새로 업로드된 파일 삭제
       try {
         fs.unlinkSync(req.file.path);
@@ -795,7 +795,7 @@ app.post('/api/upload/profile/:id', uploadProfile.single('image'), (req, res) =>
     
     db.query(updateQuery, [newProfileImageUrl, userId], (updateErr, updateResult) => {
       if (updateErr) {
-        console.error('❌ DB 프로필 사진 업데이트 오류:', updateErr);
+        console.error('⌐ DB 프로필 사진 업데이트 오류:', updateErr);
         
         // 새로 업로드된 파일 삭제
         try {
@@ -867,7 +867,7 @@ function deleteOldProfileImage(profilePictureUrl) {
       console.log(`⚠️ 삭제할 파일이 존재하지 않음: ${filename}`);
     }
   } catch (error) {
-    console.error('❌ 기존 프로필 이미지 삭제 오류:', error);
+    console.error('⌐ 기존 프로필 이미지 삭제 오류:', error);
     // 파일 삭제 실패는 치명적이지 않으므로 계속 진행
   }
 }
@@ -1264,10 +1264,10 @@ app.get('/users/:id/teams', async (req, res) => {
 });
 
 //todo 관련
-// ─────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────────
 // 임시 인증 미들웨어: 헤더 x-user-id 또는 req.user.id 사용
 // 실서비스에선 JWT/세션으로 대체하세요.
-// ─────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────────
 function requireUser(req, res, next) {
   // 1) JWT를 쓰는 경우: req.user = { id: decoded.id } 식으로 세팅되어 있어야 함
   // 2) 임시: x-user-id 헤더로 받기
@@ -1281,11 +1281,11 @@ function requireUser(req, res, next) {
   next();
 }
 
-// ─────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────────
 // 1) GET /my-teams
 //    로그인 사용자가 속한 팀 목록 + 팀 내 역할(role) 반환
 //    반환: [{ team_id, team_name, role }]
-// ─────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────────
 app.get('/my-teams', requireUser, (req, res) => {
   const userId = req.user.id;
 
@@ -1299,18 +1299,18 @@ app.get('/my-teams', requireUser, (req, res) => {
 
   db.query(sql, [userId], (err, rows) => {
     if (err) {
-      console.error('❌ /my-teams 실패:', err);
+      console.error('⌐ /my-teams 실패:', err);
       return res.status(500).json({ error: 'DB_ERROR' });
     }
     return res.json(rows);
   });
 });
 
-// ─────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────────
 // 2) GET /todos/:teamId
 //    특정 팀의 "로그인 사용자에게 할당된" 투두만 반환
 //    반환: [{ todo_id, title, status, scope_start_date, scope_end_date, scope_type }]
-// ─────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────────
 // GET /todos/:teamId?scope_type=주간&start=2025-09-08&end=2025-09-14
 app.get('/todos/:teamId', requireUser, (req, res) => {
   const userId = req.user.id;
@@ -1417,7 +1417,7 @@ app.post('/todos', requireUser, (req, res) => {
     [team_id, userId, title, scope_type, scope_start_date, scope_end_date],
     (err, result) => {
       if (err) {
-        console.error('❌ INSERT /todos 실패:', err);
+        console.error('⌐ INSERT /todos 실패:', err);
         return res.status(500).json({ error: 'DB_ERROR' });
       }
       // 방금 만든 todo를 응답 (프론트가 바로 그릴 수 있게)
@@ -1553,4 +1553,103 @@ app.post('/teams/:teamId/todos', requireUser, (req, res) => {
       });
     }
   );
+});
+
+// ✅ 이슈트래커용 API 추가
+// GET /teams/:teamId/daily-todos - 특정 팀의 모든 일일 todo 조회
+app.get('/teams/:teamId/daily-todos', (req, res) => {
+  const { teamId } = req.params;
+  
+  console.log(`=== 팀 ${teamId}의 일일 todo 조회 ===`);
+  
+  // 특정 팀의 일일 todo와 담당자 이름을 함께 조회
+  const sql = `
+    SELECT 
+      t.todo_id,
+      t.title,
+      t.status,
+      u.name as assigned_user_name
+    FROM todos t
+    INNER JOIN users u ON t.assigned_user_id = u.id
+    WHERE t.team_id = ? 
+      AND (t.scope_type = '일일' OR 
+           (t.scope_type IS NULL AND DATEDIFF(t.scope_end_date, t.scope_start_date) = 0))
+    ORDER BY 
+      CASE t.status 
+        WHEN '미진행' THEN 1 
+        WHEN '진행중' THEN 2 
+        WHEN '완료' THEN 3 
+        ELSE 4 
+      END,
+      t.created_at ASC
+  `;
+  
+  db.query(sql, [teamId], (err, results) => {
+    if (err) {
+      console.error('일일 todo 조회 오류:', err);
+      return res.status(500).json({ error: 'DB_ERROR', message: '서버 오류' });
+    }
+    
+    console.log(`✅ 팀 ${teamId}의 일일 todo 조회 결과: ${results.length}개`);
+    console.log('조회된 일일 todo:', results);
+    
+    res.json(results);
+  });
+});
+
+// ✅ 새로 추가된 월간 진행률 API
+// GET /teams/:teamId/monthly-progress - 특정 팀의 이번 달 일일 목표 진행률 조회
+app.get('/teams/:teamId/monthly-progress', (req, res) => {
+  const { teamId } = req.params;
+  
+  console.log(`=== 팀 ${teamId}의 월간 진행률 조회 ===`);
+  
+  // 현재 날짜 기준으로 이번 달 시작일과 끝일 계산
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  
+  // 날짜를 YYYY-MM-DD 형식으로 변환
+  const startDate = startOfMonth.toISOString().split('T')[0];
+  const endDate = endOfMonth.toISOString().split('T')[0];
+  
+  console.log(`이번 달 기간: ${startDate} ~ ${endDate}`);
+  
+  // 이번 달 기간 내의 일일 todo들의 완료 상황 조회
+  const sql = `
+    SELECT 
+      COUNT(*) as total_todos,
+      SUM(CASE WHEN t.status = '완료' THEN 1 ELSE 0 END) as completed_todos
+    FROM todos t
+    WHERE t.team_id = ? 
+      AND (t.scope_type = '일일' OR 
+           (t.scope_type IS NULL AND DATEDIFF(t.scope_end_date, t.scope_start_date) = 0))
+      AND (
+        (t.scope_start_date BETWEEN ? AND ?) OR
+        (t.scope_end_date BETWEEN ? AND ?) OR
+        (t.scope_start_date <= ? AND t.scope_end_date >= ?)
+      )
+  `;
+  
+  db.query(sql, [teamId, startDate, endDate, startDate, endDate, startDate, endDate], (err, results) => {
+    if (err) {
+      console.error('월간 진행률 조회 오류:', err);
+      return res.status(500).json({ error: 'DB_ERROR', message: '서버 오류' });
+    }
+    
+    const { total_todos, completed_todos } = results[0];
+    const progressPercentage = total_todos > 0 ? Math.round((completed_todos / total_todos) * 100) : 0;
+    
+    console.log(`✅ 팀 ${teamId}의 월간 진행률: ${completed_todos}/${total_todos} (${progressPercentage}%)`);
+    
+    res.json({
+      total_todos: total_todos || 0,
+      completed_todos: completed_todos || 0,
+      progress_percentage: progressPercentage,
+      period: {
+        start: startDate,
+        end: endDate
+      }
+    });
+  });
 });
