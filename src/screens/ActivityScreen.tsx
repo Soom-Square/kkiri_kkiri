@@ -7,6 +7,7 @@ import {
   Pressable,
   FlatList,
   StyleSheet,
+  ScrollView,
 } from 'react-native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -14,6 +15,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar, Platform } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { RootStackParamList } from '../types';
+// 상단 import에 추가
+import { WIDGET_COMPONENTS, WidgetPref, DEFAULT_WIDGET_PREFS } from '../constants/widgets';
+import { loadWidgetPrefs } from '../utils/widgetPrefs';
 
 const API_BASE_URL =
   Platform.OS === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
@@ -144,6 +148,8 @@ export default function ActivityScreen() {
     },
     [API_BASE, currentUserId]
   );
+  // 컴포넌트 내부 상태
+  const [widgetPrefs, setWidgetPrefs] = useState<WidgetPref[]>(DEFAULT_WIDGET_PREFS);
 
   // 최초 팀 목록
   useEffect(() => {
@@ -185,6 +191,17 @@ export default function ActivityScreen() {
     }, [fetchTeams, fetchAllDataForTeam, selected?.teamId])
   );
 
+  // 포커스 시 위젯 설정 로드(팀별 커스텀 쓰려면 selected?.teamId 넘겨줘)
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      (async () => {
+        const prefs = await loadWidgetPrefs(selected?.teamId ?? null);
+        if (alive) setWidgetPrefs(prefs);
+      })();
+      return () => { alive = false; };
+    }, [selected?.teamId])
+  );
   // 투두 행(불릿 없음)
   const TodoItem = ({ item }: { item: Todo }) => {
     const isDone = item.status === '완료';
@@ -231,7 +248,7 @@ export default function ActivityScreen() {
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
       <StatusBar barStyle="dark-content" />
-      <View style={[styles.container, { paddingTop: 12 }]}>
+      <View style={[styles.container, { paddingTop: 12 ,}]}>
         {/* 상단 */}
         <View style={styles.topRow}>
           <Text style={styles.brand}>끼리끼리</Text>
@@ -239,7 +256,7 @@ export default function ActivityScreen() {
             <Pressable hitSlop={10} onPress={() => navigation.navigate('MyActivityScreen')}>
               <Image source={require('../assets/folder.png')} style={styles.icon} resizeMode="contain" />
             </Pressable>
-            <Pressable hitSlop={10} onPress={() => navigation.navigate('ActivitySettingScreen')}>
+            <Pressable hitSlop={10} onPress={() => navigation.navigate('ActivitySettingScreen', {teamId: selected?.teamId ?? undefined,})}>
               <Image source={require('../assets/settings-01.png')} style={[styles.icon, { marginLeft: 16 }]} resizeMode="contain" />
             </Pressable>
             <Pressable hitSlop={10} onPress={() => navigation.navigate('NotificationScreen')}>
@@ -281,7 +298,12 @@ export default function ActivityScreen() {
 
           <Text style={styles.partText}>{selected?.part ? humanizePart(selected.part) : '—'}</Text>
         </View>
-
+        {/* 스크롤 컨테이너 */}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollBody}  // 패딩/여유공간은 여기서
+        keyboardShouldPersistTaps="handled"
+      >
         {/* 진행률 */}
         <View style={{ marginTop: 24 }}>
           <View style={styles.progressHeader}>
@@ -305,12 +327,24 @@ export default function ActivityScreen() {
           <Section title="주간 목표" sub={weekLabel()} data={weeklyTodos} />
         </View>
 
-        {/* FAB */}
-        <Pressable style={styles.fab} onPress={() => navigation.navigate('TodoScreen')}>
-          <Image source={require('../assets/plus-circle.png')} style={{ width: 56, height: 56 }} />
-        </Pressable>
-      </View>
-    </SafeAreaView>
+        {/* 위젯 영역: 설정(가시성/순서)에 따라 렌더 */}
+            <View style={{ marginTop: 12 }}>
+              {widgetPrefs
+                .filter(w => w.visible)
+                .sort((a,b)=>a.order-b.order)
+                .map(w => {
+                  const C = WIDGET_COMPONENTS[w.id];
+                  return <C key={w.id} />;
+                })}
+            </View>
+          </ScrollView>
+
+          {/* 떠 있는 FAB (스크롤과 독립) */}
+          <Pressable style={styles.fab} onPress={() => navigation.navigate('TodoScreen')}>
+            <Image source={require('../assets/plus-circle.png')} style={{ width: 56, height: 56 }} />
+          </Pressable>
+          </View>
+        </SafeAreaView>
   );
 }
 
@@ -325,6 +359,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     paddingTop: 24,
     paddingHorizontal: 20,
+  },
+  scrollBody: {
+    paddingBottom: 140, // FAB와 겹치지 않도록 여유
+    backgroundColor: '#FFFFFF',
   },
   topRow: {
     flexDirection: 'row',

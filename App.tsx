@@ -16,6 +16,7 @@ import TeamFindScreen from './src/screens/TeamFindScreen';
 import NotificationScreen from './src/screens/NotificationScreen';
 import TeamMakeScreen from './src/screens/TeamMakeScreen';
 import MatchingDetailScreen from './src/screens/MatchingDetailScreen'
+import ActivitySettingScreen from './src/screens/ActivitySettingScreen';
 
 // MyPage 관련 스크린 import 추가
 import MyPage2 from './src/screens/mypage2';
@@ -154,6 +155,15 @@ export default function App() {
             component={TodoTeamScreen}
             options={{
               title: '팀원 할 일',
+              headerBackTitle: '',
+              headerTitleAlign: 'center',
+            }}
+          />
+          <Stack.Screen
+            name="ActivitySettingScreen"
+            component={ActivitySettingScreen}
+            options={{
+              title: '활동 편집',
               headerBackTitle: '',
               headerTitleAlign: 'center',
             }}
