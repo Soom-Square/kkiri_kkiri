@@ -1559,21 +1559,21 @@ app.post('/teams/:teamId/todos', requireUser, (req, res) => {
 // GET /teams/:teamId/daily-todos - 특정 팀의 모든 일일 todo 조회
 app.get('/teams/:teamId/daily-todos', (req, res) => {
   const { teamId } = req.params;
-  
-  console.log(`=== 팀 ${teamId}의 일일 todo 조회 ===`);
-  
-  // 특정 팀의 일일 todo와 담당자 이름을 함께 조회
+  const today = new Date().toISOString().split('T')[0];
+
   const sql = `
     SELECT 
       t.todo_id,
       t.title,
       t.status,
-      u.name as assigned_user_name
+      u.name as assigned_user_name,
+      t.scope_start_date,
+      t.scope_end_date
     FROM todos t
     INNER JOIN users u ON t.assigned_user_id = u.id
-    WHERE t.team_id = ? 
-      AND (t.scope_type = '일일' OR 
-           (t.scope_type IS NULL AND DATEDIFF(t.scope_end_date, t.scope_start_date) = 0))
+    WHERE t.team_id = ?
+      AND t.scope_type = '일일'
+      AND ? BETWEEN t.scope_start_date AND t.scope_end_date
     ORDER BY 
       CASE t.status 
         WHEN '미진행' THEN 1 
@@ -1583,16 +1583,12 @@ app.get('/teams/:teamId/daily-todos', (req, res) => {
       END,
       t.created_at ASC
   `;
-  
-  db.query(sql, [teamId], (err, results) => {
+
+  db.query(sql, [teamId, today], (err, results) => {
     if (err) {
-      console.error('일일 todo 조회 오류:', err);
+      console.error('❌ 팀 목표 조회 오류:', err);
       return res.status(500).json({ error: 'DB_ERROR', message: '서버 오류' });
     }
-    
-    console.log(`✅ 팀 ${teamId}의 일일 todo 조회 결과: ${results.length}개`);
-    console.log('조회된 일일 todo:', results);
-    
     res.json(results);
   });
 });
@@ -1652,4 +1648,4 @@ app.get('/teams/:teamId/monthly-progress', (req, res) => {
       }
     });
   });
-});
+}); 
