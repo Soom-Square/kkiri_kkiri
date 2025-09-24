@@ -15,9 +15,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar, Platform } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { RootStackParamList } from '../types';
-// 상단 import에 추가
-import { WIDGET_COMPONENTS, WidgetPref, DEFAULT_WIDGET_PREFS } from '../constants/widgets';
 import { loadWidgetPrefs } from '../utils/widgetPrefs';
+import { WIDGET_COMPONENTS, WidgetPref, DEFAULT_WIDGET_PREFS, WidgetComponentProps } from '../constants/widgets';
+
+
 
 const API_BASE_URL =
   Platform.OS === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
@@ -334,7 +335,12 @@ export default function ActivityScreen() {
                 .sort((a,b)=>a.order-b.order)
                 .map(w => {
                   const C = WIDGET_COMPONENTS[w.id];
-                  return <C key={w.id} />;
+                  return (
+                    <C
+                        key={w.id}
+                        teamId={selected?.teamId ?? null}   // ← 팀 ID 내려줌
+                    />
+                  );
                 })}
             </View>
           </ScrollView>

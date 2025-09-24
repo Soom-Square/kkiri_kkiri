@@ -1593,3 +1593,42 @@ app.get('/teams/:teamId/progress', (req, res) => {
     res.json({ total, done, percent });
   });
 });
+
+// ✅ 이슈트래커용 API 추가
+// GET /teams/:teamId/daily-todos - 특정 팀의 모든 일일 todo 조회
+app.get('/teams/:teamId/daily-todos', (req, res) => {
+  const { teamId } = req.params;
+  const today = new Date().toISOString().split('T')[0];
+
+  const sql = `
+    SELECT 
+      t.todo_id,
+      t.title,
+      t.status,
+      u.name as assigned_user_name,
+      t.scope_start_date,
+      t.scope_end_date
+    FROM todos t
+    INNER JOIN users u ON t.assigned_user_id = u.id
+    WHERE t.team_id = ?
+      AND t.scope_type = '일일'
+      AND ? BETWEEN t.scope_start_date AND t.scope_end_date
+    ORDER BY 
+      CASE t.status 
+        WHEN '미진행' THEN 1 
+        WHEN '진행중' THEN 2 
+        WHEN '완료' THEN 3 
+        ELSE 4 
+      END,
+      t.created_at ASC
+  `;
+
+  db.query(sql, [teamId, today], (err, results) => {
+    if (err) {
+      console.error('❌ 팀 목표 조회 오류:', err);
+      return res.status(500).json({ error: 'DB_ERROR', message: '서버 오류' });
+    }
+    res.json(results);
+  });
+});
+
