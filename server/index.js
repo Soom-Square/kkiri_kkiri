@@ -1,3 +1,4 @@
+require('dotenv').config(); // ← .env 불러오기
 const express = require('express');
 const mysql = require('mysql2');
 const cors = require('cors');
@@ -13,6 +14,15 @@ app.use(bodyParser.json());
 
 const path = require('path');
 
+// 1) .env를 루트에서 명시적으로 로드
+const dotenv = require('dotenv');
+const result = dotenv.config({ path: path.join(__dirname, '..', '.env') });
+if (result.error) {
+  console.error('⚠ .env 로드 실패:', result.error);
+} else {
+  console.log(`[env] loaded: ${Object.keys(result.parsed || {}).join(', ')}`);
+}
+
 // uploads 폴더를 정적으로 서빙
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
@@ -23,12 +33,22 @@ if (!fs.existsSync(profilesDir)) {
   console.log('📁 uploads/profiles 디렉토리 생성됨');
 }
 
-// MySQL 연결 설정
+
+// 2) 필수 환경변수 검사 (누락 시 바로 에러)
+const REQUIRED_KEYS = ['DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME'];
+for (const k of REQUIRED_KEYS) {
+  if (!process.env[k]) {
+    throw new Error(`환경변수 ${k} 누락: .env를 확인하세요`);
+  }
+}
+
+// 3) MySQL 연결 (환경변수 사용)
 const db = mysql.createConnection({
-  host: 'localhost',
-  user: 'root',       // MySQL 사용자명
-  password: 'sql1508', // MySQL 비밀번호
-  database: 'myappdb',     // 사용할 DB명
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  port: Number(process.env.DB_PORT || 3306),
 });
 
 // DB 연결 확인
