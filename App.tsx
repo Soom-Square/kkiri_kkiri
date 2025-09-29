@@ -89,7 +89,15 @@ export default function App() {
               }
             }}
           />
-          <Stack.Screen name="Evaluation" component={EvaluationScreen} />
+          <Stack.Screen 
+            name="Evaluation"
+            component={EvaluationScreen}
+            options={{
+              title: '평가',
+              headerBackTitle: '',
+              headerTitleAlign: 'center',
+            }}
+          />
           <Stack.Screen name="TeamFind" component={TeamFindScreen} />
           <Stack.Screen
             name="Notifications"

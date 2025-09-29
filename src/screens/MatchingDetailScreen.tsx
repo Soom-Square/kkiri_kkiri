@@ -1,4 +1,3 @@
-// src/screens/MatchingDetailScreen.tsx
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   View,
@@ -27,6 +26,7 @@ const ICON_SMILE = require('../assets/face-smile.png');
 
 type RootStackParamList = {
   RecruitDetail: { id: number };
+  Evaluation: { user: { id: number; name?: string; department?: string; profile_picture?: string } };
 };
 
 type Recruitment = {
@@ -35,7 +35,7 @@ type Recruitment = {
   activity_name: string;
   activity_type: string;
   activity_period?: string;
-  meeting_type?: string; // '대면' | '비대면' | '혼합'
+  meeting_type?: string;
   required_members: number;
   memo?: string;
   created_at?: string;
@@ -61,7 +61,7 @@ type Application = {
     department?: string;
     profile_picture?: string;
   };
-  evaluations?: EvaluationSummary; // 받은 평가 합계
+  evaluations?: EvaluationSummary;
 };
 
 type RouteProps = RouteProp<RootStackParamList, 'RecruitDetail'>;
@@ -74,7 +74,7 @@ const MatchingDetailScreen = () => {
   const [recruit, setRecruit] = useState<Recruitment | null>(null);
   const [owner, setOwner] = useState<any>(null);
   const [apps, setApps] = useState<Application[]>([]);
-  const [intro, setIntro] = useState(''); // 일반 사용자 자기소개
+  const [intro, setIntro] = useState('');
   const [loading, setLoading] = useState(false);
 
   const isOwner = useMemo(
@@ -104,9 +104,7 @@ const MatchingDetailScreen = () => {
             try {
               const ures = await axios.get(`${BASE_URL}/api/user/${ap.applicant_id}`);
               applicant = ures.data.user;
-            } catch {
-              // ignore
-            }
+            } catch {}
           }
           let evaluations: EvaluationSummary | undefined;
           try {
@@ -130,7 +128,6 @@ const MatchingDetailScreen = () => {
     fetchDetail();
   }, [route.params.id]);
 
-  // 뒤로갔다가 다시 들어오거나, 승인/반려 후 갱신
   useFocusEffect(
     useCallback(() => {
       fetchDetail();
@@ -174,13 +171,11 @@ const MatchingDetailScreen = () => {
     }
   };
 
-  // 수락/반려: 서버에서 팀 생성/팀원 추가/상태변경 수행 → 성공 후 화면에서만 숨김(PENDING 제외)
+  // 수락/반려: 서버에서 팀 생성/팀원 추가/상태변경 수행 → 성공 후 최신 상태 재조회
   const updateAppStatus = async (application_id: number, status: 'APPROVED' | 'REJECTED') => {
     try {
       setLoading(true);
       await axios.put(`${BASE_URL}/api/applications/${application_id}/status`, { status });
-
-      // 최신 상태 재조회 (팀원 수/모집글 상태 등 동기화 목적)
       await fetchDetail();
     } catch (e) {
       console.error('상태 변경 오류:', e);
@@ -188,6 +183,11 @@ const MatchingDetailScreen = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // 평가 화면으로 이동
+  const goToEvaluation = (user: { id: number; name?: string; department?: string; profile_picture?: string }) => {
+    navigation.navigate('Evaluation', { user });
   };
 
   if (!recruit) return null;
@@ -198,14 +198,40 @@ const MatchingDetailScreen = () => {
         {/* 제목 */}
         <Text style={styles.title}>{recruit.activity_name}</Text>
 
-        {/* 작성자 요약 */}
+        {/* 작성자 요약 (프로필/이름 터치 → 평가 페이지) */}
         <View style={styles.metaRow}>
-          <Image
-            source={{ uri: owner?.profile_picture || 'https://via.placeholder.com/56' }}
-            style={styles.avatar}
-          />
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() =>
+              goToEvaluation({
+                id: owner?.id ?? recruit.owner_user_id,
+                name: owner?.name,
+                department: owner?.department,
+                profile_picture: owner?.profile_picture,
+              })
+            }
+            style={{ marginRight: 12 }}
+          >
+            <Image
+              source={{ uri: owner?.profile_picture || 'https://via.placeholder.com/56' }}
+              style={styles.avatar}
+            />
+          </TouchableOpacity>
+
           <View style={{ flex: 1 }}>
-            <Text style={styles.ownerName}>{owner?.name || '작성자'}</Text>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() =>
+                goToEvaluation({
+                  id: owner?.id ?? recruit.owner_user_id,
+                  name: owner?.name,
+                  department: owner?.department,
+                  profile_picture: owner?.profile_picture,
+                })
+              }
+            >
+              <Text style={styles.ownerName}>{owner?.name || '작성자'}</Text>
+            </TouchableOpacity>
             <Text style={styles.ownerSub}>{timeAgo(recruit.created_at)} 전</Text>
           </View>
 
@@ -264,12 +290,25 @@ const MatchingDetailScreen = () => {
                   const ev = a.evaluations || { review_low: 0, review_medium: 0, review_high: 0 };
                   return (
                     <View key={a.application_id} style={styles.appCard}>
-                      {/* 상단: 이름 + 평가 요약 (프로필 이미지 제거) */}
+                      {/* 상단: 이름(터치 → 평가 화면) + 평가 요약 (프로필 이미지 제거) */}
                       <View style={styles.appTopRow}>
-                        <Text style={styles.appTitle}>
-                          {(a.applicant?.department ? `${a.applicant.department} ` : '') +
-                            (a.applicant?.name || `user#${a.applicant_id}`)}
-                        </Text>
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          onPress={() =>
+                            goToEvaluation({
+                              id: a.applicant?.id ?? a.applicant_id,
+                              name: a.applicant?.name,
+                              department: a.applicant?.department,
+                              profile_picture: a.applicant?.profile_picture,
+                            })
+                          }
+                          style={{ flex: 1 }}
+                        >
+                          <Text style={styles.appTitle}>
+                            {(a.applicant?.department ? `${a.applicant.department} ` : '') +
+                              (a.applicant?.name || `user#${a.applicant_id}`)}
+                          </Text>
+                        </TouchableOpacity>
 
                         <View style={styles.evalWrap}>
                           <View style={styles.evalItem}>
@@ -331,9 +370,6 @@ function timeAgo(iso?: string) {
   if (h < 24) return `${h}시간`;
   const d = Math.floor(h / 24);
   return `${d}일`;
-}
-function labelStatus(s: Application['status']) {
-  return s === 'PENDING' ? '대기' : s === 'APPROVED' ? '수락' : s === 'REJECTED' ? '반려' : '취소';
 }
 
 const styles = StyleSheet.create({
