@@ -6,7 +6,7 @@ import InfoScreen from '../screens/Info/InfoScreen';
 import ActivityScreen from '../screens/ActivityScreen';
 import MatchingScreen from '../screens/MatchingScreen';
 import MyPageScreen from '../screens/MyPageScreen';
-import { Text, Platform } from 'react-native';
+import { Text, Platform, Image } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
 const Tab = createBottomTabNavigator();
@@ -14,19 +14,40 @@ const Tab = createBottomTabNavigator();
 export default function BottomTabNavigator() {
   return (
     <Tab.Navigator
-    initialRouteName="홈"
+      initialRouteName="홈"
       screenOptions={({ route }) => ({
-        tabBarIcon: ({ color, size }) => {
-          let iconName = 'home-outline';
-           switch (route.name) {
-            case '홈': iconName = 'home-outline'; break;
-            case '정보': iconName = 'book-outline'; break;
-            case '활동': iconName = 'pencil-outline'; break;
-            case '매칭': iconName = 'school-outline'; break;
-            case '마이페이지': iconName = 'person-outline'; break;
+        tabBarIcon: ({ color, size, focused }) => {
+          let iconSource;
+
+          switch (route.name) {
+            case '홈':
+              iconSource = require('../assets/home-05.png');
+              break;
+            case '정보':
+              iconSource = require('../assets/book.png');
+              break;
+            case '활동':
+              iconSource = require('../assets/pencil-line.png');
+              break;
+            case '매칭':
+              iconSource = require('../assets/graduation-hat-01.png');
+              break;
+            case '마이페이지':
+              iconSource = require('../assets/user.png');
+              break;
           }
 
-          return <Ionicons name={iconName} size={size} color={color} />;
+          return (
+            <Image
+              source={iconSource}
+              style={{
+                width: size,
+                height: size,
+                tintColor: color, // 색상을 tabBarActiveTintColor / tabBarInactiveTintColor와 동기화
+                resizeMode: 'contain',
+              }}
+            />
+          );
         },
         tabBarActiveTintColor: '#7A5AF8',
         tabBarInactiveTintColor: '#000',
@@ -52,9 +73,16 @@ export default function BottomTabNavigator() {
           marginTop: 5, // 아이콘 위쪽에 5px 여백 추가 (원하는 값으로 조절)
         },
         tabBarLabel: ({ focused, color }) => (
-          <Text style={{ color, fontSize: 12, marginBottom: Platform.OS === 'ios' ? 0 : 5 }}>
-            {route.name}
-          </Text>
+          <Text
+          style={{
+            color,
+            fontSize: 12,
+            marginBottom: Platform.OS === 'ios' ? 0 : 5,
+            fontWeight: '500', // 두께 조절 (400=보통, 500=중간, 600~700=두껍게)
+          }}
+        >
+          {route.name}
+        </Text>
         ),
         tabBarHideOnKeyboard: true,
       })}
