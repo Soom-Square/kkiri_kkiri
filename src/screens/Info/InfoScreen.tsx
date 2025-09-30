@@ -1,3 +1,4 @@
+// src/screens/Info/InfoScreen.tsx
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -8,11 +9,11 @@ import {
   TouchableOpacity,
   StyleSheet,
   Platform,
+  Image,
 } from 'react-native';
 import axios from 'axios';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import Icon from 'react-native-vector-icons/Ionicons';
 
 const BASE_URL =
   Platform.OS === 'android'
@@ -78,12 +79,22 @@ const InfoScreen = () => {
       {/* 상단 로고 + 종 아이콘 */}
       <View style={styles.header}>
         <Text style={styles.logo}>끼리끼리</Text>
-        <Icon name="notifications-outline" size={24} color="#101828" />
+        <TouchableOpacity onPress={() => navigation.navigate('Notifications' as never)}>
+          <Image
+            source={require('../../assets/bell.png')}
+            style={{ width: 24, height: 24, tintColor: '#101828' }}
+            resizeMode="contain"
+          />
+        </TouchableOpacity>
       </View>
 
       {/* 검색창 */}
       <View style={styles.searchContainer}>
-        <Icon name="search-outline" size={20} color="#667085" style={{ marginRight: 8 }} />
+        <Image
+          source={require('../../assets/search-md.png')}
+          style={{ width: 20, height: 20, tintColor: '#667085', marginRight: 8 }}
+          resizeMode="contain"
+        />
         <TextInput
           placeholder="검색어를 입력하세요"
           value={searchText}
@@ -118,7 +129,7 @@ const InfoScreen = () => {
           <TouchableOpacity
             key={idx}
             style={styles.activityItem}
-            onPress={() => navigation.navigate('InfoDetail', { id: item.activity_id })}
+            onPress={() => navigation.navigate('InfoDetail', { id: item.activity_id } as never)}
           >
             <Text style={styles.activityTitle}>{item.title}</Text>
             <Text style={styles.activityText}>
@@ -190,10 +201,10 @@ const styles = StyleSheet.create({
     color: '#555',
   },
   checkboxRow: {
-  flexDirection: 'row',
-  flexWrap: 'wrap',
-  justifyContent: 'space-between',
-  gap: 8,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 8,
   },
   checkboxItemSelected: {
     backgroundColor: '#EDE9FE',
@@ -213,12 +224,12 @@ const styles = StyleSheet.create({
     borderColor: '#7A5AF8',
   },
   filterBox: {
-  backgroundColor: '#F9F5FF',
-  borderRadius: 12,
-  paddingVertical: 4,
-  paddingHorizontal: 16, 
-  marginBottom: 20,
-  marginHorizontal: 20,
+    backgroundColor: '#F9F5FF',
+    borderRadius: 12,
+    paddingVertical: 4,
+    paddingHorizontal: 16,
+    marginBottom: 20,
+    marginHorizontal: 20,
   },
   checkboxGrid: {
     flexDirection: 'row',
@@ -230,7 +241,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '30%',
     marginVertical: 18,
-    paddingHorizontal:4,
+    paddingHorizontal: 4,
   },
   checkboxCircle: {
     width: 16,

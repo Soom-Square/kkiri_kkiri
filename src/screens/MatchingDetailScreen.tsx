@@ -1,4 +1,3 @@
-// src/screens/MatchingDetailScreen.tsx
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   View,
@@ -20,8 +19,14 @@ import { useAuth } from '../context/AuthContext';
 
 const BASE_URL = Platform.OS === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
 
+// 평가 아이콘 (경로는 프로젝트에 맞게 조정)
+const ICON_FROWN = require('../assets/face-frown.png');
+const ICON_HAPPY = require('../assets/face-happy.png');
+const ICON_SMILE = require('../assets/face-smile.png');
+
 type RootStackParamList = {
   RecruitDetail: { id: number };
+  Evaluation: { user: { id: number; name?: string; department?: string; profile_picture?: string } };
 };
 
 type Recruitment = {
@@ -30,11 +35,17 @@ type Recruitment = {
   activity_name: string;
   activity_type: string;
   activity_period?: string;
-  meeting_type?: string; // '대면' | '비대면' | '혼합'
+  meeting_type?: string;
   required_members: number;
   memo?: string;
   created_at?: string;
-  // 자격 조건 등 필요시 추가
+};
+
+type EvaluationSummary = {
+  review_low: number;
+  review_medium: number;
+  review_high: number;
+  total_reviews?: number;
 };
 
 type Application = {
@@ -44,13 +55,13 @@ type Application = {
   memo?: string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELED';
   created_at: string;
-  // 아래는 클라이언트에서 합친 정보
   applicant?: {
     id: number;
     name: string;
     department?: string;
     profile_picture?: string;
   };
+  evaluations?: EvaluationSummary;
 };
 
 type RouteProps = RouteProp<RootStackParamList, 'RecruitDetail'>;
@@ -63,7 +74,7 @@ const MatchingDetailScreen = () => {
   const [recruit, setRecruit] = useState<Recruitment | null>(null);
   const [owner, setOwner] = useState<any>(null);
   const [apps, setApps] = useState<Application[]>([]);
-  const [intro, setIntro] = useState(''); // 일반 사용자 자기소개
+  const [intro, setIntro] = useState('');
   const [loading, setLoading] = useState(false);
 
   const isOwner = useMemo(
@@ -73,6 +84,7 @@ const MatchingDetailScreen = () => {
 
   const fetchDetail = async () => {
     try {
+      // 모집글
       const r = await axios.get(`${BASE_URL}/api/team-recruitments/${route.params.id}`);
       setRecruit(r.data);
 
@@ -80,21 +92,31 @@ const MatchingDetailScreen = () => {
       const u = await axios.get(`${BASE_URL}/api/user/${r.data.owner_user_id}`);
       setOwner(u.data.user);
 
-      // 지원 목록(작성자/일반 공통으로 필요)
+      // 신청 목록
       const a = await axios.get(`${BASE_URL}/api/team-recruitments/${route.params.id}/applications`);
       const list: Application[] = a.data || [];
 
-      // 지원자 상세 붙이기(가벼운 N회 호출; 필요시 서버 join으로 대체 가능)
+      // 지원자 상세 + 평가 요약
       const enriched = await Promise.all(
         list.map(async (ap: Application) => {
-          try {
-            const ures = await axios.get(`${BASE_URL}/api/user/${ap.applicant_id}`);
-            return { ...ap, applicant: ures.data.user };
-          } catch {
-            return ap;
+          let applicant = ap.applicant;
+          if (!applicant) {
+            try {
+              const ures = await axios.get(`${BASE_URL}/api/user/${ap.applicant_id}`);
+              applicant = ures.data.user;
+            } catch {}
           }
+          let evaluations: EvaluationSummary | undefined;
+          try {
+            const ev = await axios.get(`${BASE_URL}/api/user/${ap.applicant_id}/evaluations`);
+            evaluations = ev.data?.evaluations ?? { review_low: 0, review_medium: 0, review_high: 0 };
+          } catch {
+            evaluations = { review_low: 0, review_medium: 0, review_high: 0 };
+          }
+          return { ...ap, applicant, evaluations };
         })
       );
+
       setApps(enriched);
     } catch (e) {
       console.error('상세 조회 오류:', e);
@@ -106,7 +128,6 @@ const MatchingDetailScreen = () => {
     fetchDetail();
   }, [route.params.id]);
 
-  // 뒤로갔다가 다시 들어오거나, 승인/반려 후 갱신
   useFocusEffect(
     useCallback(() => {
       fetchDetail();
@@ -150,12 +171,12 @@ const MatchingDetailScreen = () => {
     }
   };
 
+  // 수락/반려: 서버에서 팀 생성/팀원 추가/상태변경 수행 → 성공 후 최신 상태 재조회
   const updateAppStatus = async (application_id: number, status: 'APPROVED' | 'REJECTED') => {
     try {
       setLoading(true);
-      // 권장: 상태 변경 API
       await axios.put(`${BASE_URL}/api/applications/${application_id}/status`, { status });
-      fetchDetail();
+      await fetchDetail();
     } catch (e) {
       console.error('상태 변경 오류:', e);
       Alert.alert('오류', '상태 변경에 실패했습니다.');
@@ -164,30 +185,53 @@ const MatchingDetailScreen = () => {
     }
   };
 
+  // 평가 화면으로 이동
+  const goToEvaluation = (user: { id: number; name?: string; department?: string; profile_picture?: string }) => {
+    navigation.navigate('Evaluation', { user });
+  };
+
   if (!recruit) return null;
 
   return (
     <SafeAreaView style={styles.safe}>
-      {/* <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Icon name="chevron-back" size={24} color="#101828" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>팀 찾기</Text>
-        <View style={{ width: 24 }} />
-      </View> */}
-
       <ScrollView contentContainerStyle={{ paddingBottom: 24, paddingTop: 16 }}>
         {/* 제목 */}
         <Text style={styles.title}>{recruit.activity_name}</Text>
 
-        {/* 작성자 요약 */}
+        {/* 작성자 요약 (프로필/이름 터치 → 평가 페이지) */}
         <View style={styles.metaRow}>
-          <Image
-            source={{ uri: owner?.profile_picture || 'https://via.placeholder.com/56' }}
-            style={styles.avatar}
-          />
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() =>
+              goToEvaluation({
+                id: owner?.id ?? recruit.owner_user_id,
+                name: owner?.name,
+                department: owner?.department,
+                profile_picture: owner?.profile_picture,
+              })
+            }
+            style={{ marginRight: 12 }}
+          >
+            <Image
+              source={{ uri: owner?.profile_picture || 'https://via.placeholder.com/56' }}
+              style={styles.avatar}
+            />
+          </TouchableOpacity>
+
           <View style={{ flex: 1 }}>
-            <Text style={styles.ownerName}>{owner?.name || '작성자'}</Text>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() =>
+                goToEvaluation({
+                  id: owner?.id ?? recruit.owner_user_id,
+                  name: owner?.name,
+                  department: owner?.department,
+                  profile_picture: owner?.profile_picture,
+                })
+              }
+            >
+              <Text style={styles.ownerName}>{owner?.name || '작성자'}</Text>
+            </TouchableOpacity>
             <Text style={styles.ownerSub}>{timeAgo(recruit.created_at)} 전</Text>
           </View>
 
@@ -234,48 +278,77 @@ const MatchingDetailScreen = () => {
           </>
         )}
 
-        {/* --- 작성자 뷰 --- */}
+        {/* --- 작성자 뷰: 신청자 목록 (PENDING만 노출) --- */}
         {isOwner && (
           <View style={{ paddingHorizontal: 16, marginTop: 8 }}>
-            {apps.length === 0 ? (
+            {apps.filter(a => a.status === 'PENDING').length === 0 ? (
               <Text style={{ color: '#475467' }}>아직 신청자가 없습니다.</Text>
             ) : (
               apps
-                .sort((a, b) => (a.status === 'PENDING' ? -1 : 1) - (b.status === 'PENDING' ? -1 : 1))
-                .map((a) => (
-                <View key={a.application_id} style={styles.appCard}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Image
-                      source={{ uri: a.applicant?.profile_picture || 'https://via.placeholder.com/40' }}
-                      style={styles.appAvatar}
-                    />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.appTitle}>
-                        {(a.applicant?.department ? `${a.applicant.department} ` : '') + (a.applicant?.name || `user#${a.applicant_id}`)}
-                      </Text>
-                      <Text style={styles.appSub}>{timeAgo(a.created_at)} 전 · 상태: {labelStatus(a.status)}</Text>
-                    </View>
-                  </View>
-                  {a.memo ? <Text style={styles.appMemo}>{a.memo}</Text> : null}
+                .filter(a => a.status === 'PENDING')
+                .map((a) => {
+                  const ev = a.evaluations || { review_low: 0, review_medium: 0, review_high: 0 };
+                  return (
+                    <View key={a.application_id} style={styles.appCard}>
+                      {/* 상단: 이름(터치 → 평가 화면) + 평가 요약 (프로필 이미지 제거) */}
+                      <View style={styles.appTopRow}>
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          onPress={() =>
+                            goToEvaluation({
+                              id: a.applicant?.id ?? a.applicant_id,
+                              name: a.applicant?.name,
+                              department: a.applicant?.department,
+                              profile_picture: a.applicant?.profile_picture,
+                            })
+                          }
+                          style={{ flex: 1 }}
+                        >
+                          <Text style={styles.appTitle}>
+                            {(a.applicant?.department ? `${a.applicant.department} ` : '') +
+                              (a.applicant?.name || `user#${a.applicant_id}`)}
+                          </Text>
+                        </TouchableOpacity>
 
-                  <View style={styles.appButtons}>
-                    <TouchableOpacity
-                      style={[styles.smallBtn, styles.acceptBtn, loading && { opacity: 0.6 }]}
-                      onPress={() => updateAppStatus(a.application_id, 'APPROVED')}
-                      disabled={loading || a.status === 'APPROVED'}
-                    >
-                      <Text style={[styles.smallBtnText, styles.acceptText]}>수락</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.smallBtn, styles.rejectBtn, loading && { opacity: 0.6 }]}
-                      onPress={() => updateAppStatus(a.application_id, 'REJECTED')}
-                      disabled={loading || a.status === 'REJECTED'}
-                    >
-                      <Text style={styles.smallBtnText}>반려</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))
+                        <View style={styles.evalWrap}>
+                          <View style={styles.evalItem}>
+                            <Text style={styles.evalNum}>{ev.review_low || 0}</Text>
+                            <Image source={ICON_FROWN} style={styles.evalIcon} />
+                          </View>
+                          <View style={styles.evalItem}>
+                            <Text style={styles.evalNum}>{ev.review_medium || 0}</Text>
+                            <Image source={ICON_HAPPY} style={styles.evalIcon} />
+                          </View>
+                          <View style={styles.evalItem}>
+                            <Text style={styles.evalNum}>{ev.review_high || 0}</Text>
+                            <Image source={ICON_SMILE} style={styles.evalIcon} />
+                          </View>
+                        </View>
+                      </View>
+
+                      <Text style={styles.appSub}>{timeAgo(a.created_at)} 전 · 상태: 대기</Text>
+
+                      {a.memo ? <Text style={styles.appMemo}>{a.memo}</Text> : null}
+
+                      <View style={styles.appButtons}>
+                        <TouchableOpacity
+                          style={[styles.smallBtn, styles.acceptBtn, loading && { opacity: 0.6 }]}
+                          onPress={() => updateAppStatus(a.application_id, 'APPROVED')}
+                          disabled={loading}
+                        >
+                          <Text style={[styles.smallBtnText, styles.acceptText]}>수락</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.smallBtn, styles.rejectBtn, loading && { opacity: 0.6 }]}
+                          onPress={() => updateAppStatus(a.application_id, 'REJECTED')}
+                          disabled={loading}
+                        >
+                          <Text style={styles.smallBtnText}>반려</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })
             )}
           </View>
         )}
@@ -298,17 +371,9 @@ function timeAgo(iso?: string) {
   const d = Math.floor(h / 24);
   return `${d}일`;
 }
-function labelStatus(s: Application['status']) {
-  return s === 'PENDING' ? '대기' : s === 'APPROVED' ? '수락' : s === 'REJECTED' ? '반려' : '취소';
-}
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#fff' },
-  header: {
-    paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-  },
-  headerTitle: { fontSize: 18, fontWeight: '700', color: '#101828' },
 
   title: { fontSize: 22, fontWeight: '800', color: '#101828', paddingHorizontal: 16, marginBottom: 12 },
   metaRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16 },
@@ -331,14 +396,21 @@ const styles = StyleSheet.create({
   },
   primaryBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 
-  appCard: {
-    backgroundColor: '#F3F4F6', borderRadius: 18, padding: 14, marginBottom: 12,
-  },
-  appAvatar: { width: 40, height: 40, borderRadius: 20, marginRight: 10, backgroundColor: '#E5E7EB' },
-  appTitle: { fontSize: 14, color: '#101828', fontWeight: '800' },
-  appSub: { fontSize: 12, color: '#667085', marginTop: 2 },
+  // 신청 카드
+  appCard: { backgroundColor: '#F3F4F6', borderRadius: 18, padding: 14, marginBottom: 12 },
+  appTopRow: { flexDirection: 'row', alignItems: 'center' },
+  appTitle: { fontSize: 14, color: '#101828', fontWeight: '800', flex: 1 },
+  appSub: { fontSize: 12, color: '#667085', marginTop: 4 },
   appMemo: { marginTop: 8, color: '#101828', fontSize: 14, lineHeight: 20 },
-  appButtons: { flexDirection: 'row', justifyContent: 'center', marginTop: 10, gap: 10 },
+
+  // 평가 요약
+  evalWrap: { flexDirection: 'row', alignItems: 'center' },
+  evalItem: { flexDirection: 'row', alignItems: 'center', marginLeft: 10 },
+  evalNum: { fontSize: 13, color: '#101828', marginRight: 6, fontWeight: '700' },
+  evalIcon: { width: 18, height: 18, resizeMode: 'contain' },
+
+  // 버튼
+  appButtons: { flexDirection: 'row', justifyContent: 'center', marginTop: 12, gap: 10 },
   smallBtn: { minWidth: 90, alignItems: 'center', paddingVertical: 8, borderRadius: 12 },
   smallBtnText: { color: '#fff', fontWeight: '700' },
   acceptBtn: { backgroundColor: '#E9D7FE' },

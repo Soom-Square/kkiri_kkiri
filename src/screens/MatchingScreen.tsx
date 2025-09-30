@@ -1,4 +1,4 @@
-// MatchingScreen.tsx
+// src/screens/MatchingScreen.tsx
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   View,
@@ -9,15 +9,13 @@ import {
   TouchableOpacity,
   StyleSheet,
   Platform,
+  Image, // ← 추가
 } from 'react-native';
 import axios from 'axios';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import Icon from 'react-native-vector-icons/Ionicons';
 import { useAuth } from '../context/AuthContext';
-
 import { useFocusEffect } from '@react-navigation/native';
-
 
 const BASE_URL =
   Platform.OS === 'android'
@@ -30,13 +28,13 @@ const categories = ['공모전', '비교과', '경진대회', '동아리', '소�
 type Recruitment = {
   recruitment_id: number;
   team_id?: number;
-  post_name: string;            // 제목
-  activity_type: string;           // 공모전/비교과/...
+  post_name: string;
+  activity_type: string;
   qualification_department?: string;
   qualification_student_number?: string;
   qualification_age?: number;
-  required_members: number;        // 필요 인원(정원)
-  activity_period?: string;        // "8주" 등 사람이 읽는 기간 텍스트
+  required_members: number;
+  activity_period?: string;
   meeting_type?: '대면' | '비대면' | '혼합' | string;
   memo?: string;
   status?: string;
@@ -48,7 +46,7 @@ type Application = {
   recruitment_id: number;
   applicant_id: number;
   memo?: string;
-  status?: string; // 'pending' | 'approved' | 'rejected' 등일 수 있음
+  status?: string;
   created_at?: string;
 };
 
@@ -65,7 +63,7 @@ const MatchingScreen = () => {
   const fetchAll = async () => {
     try {
       const [rRes, aRes] = await Promise.all([
-        axios.get(`${BASE_URL}/api/team-recruitments`),          // 또는 with-count
+        axios.get(`${BASE_URL}/api/team-recruitments`),
         axios.get(`${BASE_URL}/api/applications`),
       ]);
       setRecruitments(rRes.data || []);
@@ -75,33 +73,15 @@ const MatchingScreen = () => {
     }
   };
 
-  // 최초 1회
   useEffect(() => {
     fetchAll();
   }, []);
 
-  // 화면에 다시 포커스될 때마다 새로고침
   useFocusEffect(
     useCallback(() => {
       fetchAll();
     }, [])
   );
-  // ---- 데이터 불러오기 ----
-  useEffect(() => {
-    const fetchAll = async () => {
-      try {
-        const [rRes, aRes] = await Promise.all([
-          axios.get(`${BASE_URL}/api/team-recruitments`),
-          axios.get(`${BASE_URL}/api/applications`),
-        ]);
-        setRecruitments(rRes.data || []);
-        setApplications(aRes.data || []);
-      } catch (e) {
-        console.error('매칭 데이터 불러오기 오류:', e);
-      }
-    };
-    fetchAll();
-  }, []);
 
   // ---- 현재 인원 집계 (status가 cancel/rejected가 아닌 것만 카운트) ----
   const headcountsByRecruitment = useMemo(() => {
@@ -141,20 +121,25 @@ const MatchingScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* 상단 로고 + 알림 */}
+      {/* 상단 로고 + 알림(이미지) */}
       <View style={styles.header}>
         <Text style={styles.logo}>끼리끼리</Text>
-        <Icon
-          name="notifications-outline"
-          size={24}
-          color="#101828"
-          onPress={() => navigation.navigate('Notification')}
-        />
+        <TouchableOpacity onPress={() => navigation.navigate('Notifications' as never)}>
+          <Image
+            source={require('../assets/bell.png')}
+            style={{ width: 24, height: 24, tintColor: '#101828' }}
+            resizeMode="contain"
+          />
+        </TouchableOpacity>
       </View>
 
-      {/* 검색창 */}
+      {/* 검색창 (돋보기 이미지) */}
       <View style={styles.searchContainer}>
-        <Icon name="search-outline" size={20} color="#667085" style={{ marginRight: 8 }} />
+        <Image
+          source={require('../assets/search-md.png')}
+          style={{ width: 20, height: 20, tintColor: '#667085', marginRight: 8 }}
+          resizeMode="contain"
+        />
         <TextInput
           placeholder="검색어를 입력하세요"
           value={searchText}
@@ -164,7 +149,7 @@ const MatchingScreen = () => {
         />
       </View>
 
-      {/* 카테고리 체크박스 (시안처럼 보라배경 박스) */}
+      {/* 카테고리 체크박스 */}
       <View style={styles.filterBox}>
         <View style={styles.checkboxGrid}>
           {categories.map((cat) => {
@@ -197,8 +182,9 @@ const MatchingScreen = () => {
             <TouchableOpacity
               key={r.recruitment_id}
               style={styles.item}
-              // 상세 페이지가 있다면 아래 라우트 이름만 바꿔서 사용하세요.
-              onPress={() => navigation.navigate('MatchingDetail', { id: r.recruitment_id })}
+              onPress={() =>
+                navigation.navigate('MatchingDetail', { id: r.recruitment_id } as never)
+              }
               activeOpacity={0.8}
             >
               <Text style={styles.itemTitle} numberOfLines={1}>
@@ -220,7 +206,7 @@ const MatchingScreen = () => {
         <View style={{ alignItems: 'center', marginTop: 16, marginBottom: 24 }}>
           <TouchableOpacity
             style={styles.createBtn}
-            onPress={() => navigation.navigate('TeamMake', { user })}  // ← user.id 포함
+            onPress={() => navigation.navigate('TeamMake', { user } as never)}
             activeOpacity={0.85}
           >
             <Text style={styles.createBtnText}>팀 만들기</Text>
