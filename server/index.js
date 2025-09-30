@@ -1652,3 +1652,152 @@ app.get('/teams/:teamId/daily-todos', (req, res) => {
   });
 });
 
+// ✅ GET /teams/:teamId/announcements - 팀 공지사항 조회 (독립된 라우트)
+app.get('/teams/:teamId/announcements', (req, res) => {
+  const { teamId } = req.params;
+  
+  console.log(`=== 팀 ${teamId}의 공지사항 조회 ===`);
+  
+  const sql = `
+    SELECT 
+      tb.board_id,
+      tb.title as board_title,
+      tp.post_id,
+      tp.content,
+      tp.created_at,
+      u.name as author_name
+    FROM team_boards tb
+    INNER JOIN team_posts tp ON tb.board_id = tp.board_id
+    INNER JOIN users u ON tp.author_id = u.id
+    WHERE tb.team_id = ?
+    ORDER BY tp.created_at DESC
+    LIMIT 10
+  `;
+  
+  db.query(sql, [teamId], (err, results) => {
+    if (err) {
+      console.error('공지사항 조회 오류:', err);
+      return res.status(500).json({ error: 'DB_ERROR', message: '서버 오류' });
+    }
+    
+    console.log(`✅ 팀 ${teamId}의 공지사항 조회 결과: ${results.length}개`);
+    res.json(results);
+  });
+});
+
+// ✅ 게시판 제목 수정 API
+// PUT /teams/:teamId/board-title
+app.put('/teams/:teamId/board-title', (req, res) => {
+  const { teamId } = req.params;
+  const { title } = req.body;
+  
+  console.log(`=== 팀 ${teamId}의 게시판 제목 수정 요청 ===`);
+  console.log('새 제목:', title);
+  
+  if (!title || title.trim() === '') {
+    return res.status(400).json({ 
+      success: false, 
+      message: '제목이 비어있습니다' 
+    });
+  }
+  
+  const sql = `
+    UPDATE team_boards 
+    SET title = ? 
+    WHERE team_id = ?
+    LIMIT 1
+  `;
+  
+  db.query(sql, [title.trim(), teamId], (err, result) => {
+    if (err) {
+      console.error('게시판 제목 수정 오류:', err);
+      return res.status(500).json({ 
+        success: false, 
+        message: '서버 오류' 
+      });
+    }
+    
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        message: '게시판을 찾을 수 없습니다' 
+      });
+    }
+    
+    console.log(`✅ 팀 ${teamId}의 게시판 제목이 "${title}"로 변경되었습니다`);
+    res.json({ 
+      success: true, 
+      message: '게시판 제목이 성공적으로 수정되었습니다',
+      title: title.trim()
+    });
+  });
+});
+// ✅ 공지사항 작성 API
+// POST /teams/:teamId/announcements
+app.post('/teams/:teamId/announcements', (req, res) => {
+  const { teamId } = req.params;
+  const { content, author_id } = req.body;
+  
+  console.log(`=== 팀 ${teamId}의 공지사항 작성 요청 ===`);
+  console.log('작성자 ID:', author_id);
+  console.log('내용:', content);
+  
+  if (!content || content.trim() === '') {
+    return res.status(400).json({ 
+      success: false, 
+      message: '내용을 입력해주세요' 
+    });
+  }
+  
+  if (!author_id) {
+    return res.status(400).json({ 
+      success: false, 
+      message: '작성자 정보가 필요합니다' 
+    });
+  }
+  
+  // 1) 먼저 해당 팀의 게시판 ID 조회
+  const getBoardSql = 'SELECT board_id FROM team_boards WHERE team_id = ? LIMIT 1';
+  
+  db.query(getBoardSql, [teamId], (err, boardResults) => {
+    if (err) {
+      console.error('게시판 조회 오류:', err);
+      return res.status(500).json({ 
+        success: false, 
+        message: '서버 오류' 
+      });
+    }
+    
+    if (boardResults.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        message: '게시판을 찾을 수 없습니다' 
+      });
+    }
+    
+    const board_id = boardResults[0].board_id;
+    
+    // 2) 게시글 작성
+    const insertPostSql = `
+      INSERT INTO team_posts (board_id, author_id, content, created_at)
+      VALUES (?, ?, ?, NOW())
+    `;
+    
+    db.query(insertPostSql, [board_id, author_id, content.trim()], (insertErr, result) => {
+      if (insertErr) {
+        console.error('게시글 작성 오류:', insertErr);
+        return res.status(500).json({ 
+          success: false, 
+          message: '게시글 작성에 실패했습니다' 
+        });
+      }
+      
+      console.log(`✅ 게시글 작성 성공 - post_id: ${result.insertId}`);
+      res.json({ 
+        success: true, 
+        message: '공지사항이 작성되었습니다',
+        post_id: result.insertId
+      });
+    });
+  });
+});

@@ -104,6 +104,8 @@ export default function ActivityScreen() {
     return `< ${mm}월 ${weekOfMonth(d)}주차 >`;
   };
 
+
+
   // ── API 호출 함수 ──────────────────────────────
   const fetchTeams = useCallback(async () => {
     if (!currentUserId) return [];
@@ -351,8 +353,13 @@ export default function ActivityScreen() {
           </Pressable>
           </View>
         </SafeAreaView>
+
+        
   );
+  
+  
 }
+
 
 function humanizePart(part: string) {
   if (!part) return '';
@@ -534,5 +541,22 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 3,
     elevation: 5,
+  },
+  announcementWidget: {
+    marginTop: 16,
+  },
+  announcementHeader: {
+    marginBottom: 16,
+  },
+  announcementTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#101828',
+    marginBottom: 8,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    width: '100%',
   },
 });
