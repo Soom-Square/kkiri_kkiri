@@ -1,5 +1,5 @@
 // src/screens/TodoScreen.tsx
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useLayoutEffect } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -453,6 +453,23 @@ export default function TodoScreen() {
     );
   };
 
+  // --- 상단 네비게이션 바 우측 버튼 추가 ---
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity
+          onPress={() => navigation.navigate('ActivityGoalsScreen')}
+          style={{ marginRight: 12 }}
+        >
+          <Image
+            source={require('../assets/settings-01.png')}
+            style={{ width: 24, height: 24 }}
+            resizeMode="contain"
+          />
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation]);
   // 섹션 렌더
   const renderSection = (scope: Scope) => {
     const p = periodOf(scope, viewDate[scope]);

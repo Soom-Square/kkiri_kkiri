@@ -1338,13 +1338,119 @@ app.get('/my-teams', requireUser, (req, res) => {
 //    반환: [{ todo_id, title, status, scope_start_date, scope_end_date, scope_type }]
 // ─────────────────────────────────────────────────────────────
 // GET /todos/:teamId?scope_type=주간&start=2025-09-08&end=2025-09-14
+// app.get('/todos/:teamId', requireUser, (req, res) => {
+//   const userId = req.user.id;
+//   const { teamId } = req.params;
+//   const { scope_type, start, end } = req.query;
+
+//   const params = [teamId, userId];
+//   let where = `team_id = ? AND assigned_user_id = ?`;
+
+//   if (scope_type) {
+//     where += ` AND COALESCE(scope_type,
+//       CASE
+//         WHEN DATEDIFF(scope_end_date, scope_start_date) = 0 THEN '일일'
+//         WHEN DATEDIFF(scope_end_date, scope_start_date) BETWEEN 1 AND 6 THEN '주간'
+//         ELSE '월간'
+//       END
+//     ) = ?`;
+//     params.push(scope_type);
+//   }
+
+//   // 기간이 주어지면 "겹치는 것"을 모두 보여줌
+//   if (start && end) {
+//     where += ` AND NOT (scope_end_date < ? OR scope_start_date > ?)`;
+//     params.push(start, end);
+//   }
+
+//   const sql = `
+//     SELECT
+//       todo_id, title, status, scope_start_date, scope_end_date,
+//       COALESCE(
+//         scope_type,
+//         CASE
+//           WHEN DATEDIFF(scope_end_date, scope_start_date) = 0 THEN '일일'
+//           WHEN DATEDIFF(scope_end_date, scope_start_date) BETWEEN 1 AND 6 THEN '주간'
+//           ELSE '월간'
+//         END
+//       ) AS scope_type
+//     FROM todos
+//     WHERE ${where}
+//     ORDER BY scope_start_date ASC, created_at ASC
+//   `;
+
+//   db.query(sql, params, (err, rows) => {
+//     if (err) return res.status(500).json({ error: 'DB_ERROR' });
+//     res.json(rows);
+//   });
+// });
+// 기존 라우트 교체
+// ===== 팀 단건 조회: GET /teams/:teamId =====
+// 반환 예: { team_id, team_name, due_date: '2025-10-31' | null, ... }
+// GET /teams/:teamId
+app.get('/teams/:teamId', requireUser, (req, res) => {
+  const { teamId } = req.params;
+  const sql = `
+    SELECT
+      team_id,
+      team_name,
+      DATE_FORMAT(due_date, '%Y-%m-%d') AS due_date,
+      activity_status
+    FROM teams
+    WHERE team_id = ?
+    LIMIT 1
+  `;
+  db.query(sql, [teamId], (err, rows) => {
+    if (err) {
+      console.error('DB_ERROR(GET /teams/:teamId):', err);
+      return res.status(500).json({ error: 'DB_ERROR' });
+    }
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: 'NOT_FOUND' });
+    }
+    return res.json(rows[0]);
+  });
+});
+
+// ===== 팀 마감일 저장: PUT /teams/:teamId/due-date =====
+// body: { due_date: 'YYYY-MM-DD' }  (null 허용 시 추가 처리)
+// PUT /teams/:teamId/due-date
+app.put('/teams/:teamId/due-date', requireUser, (req, res) => {
+  const { teamId } = req.params;
+  const { due_date } = req.body;
+
+  if (typeof due_date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(due_date)) {
+    return res.status(400).json({ error: 'BAD_REQUEST', message: 'due_date는 YYYY-MM-DD 형식 문자열이어야 합니다.' });
+  }
+
+  const sql = `UPDATE teams SET due_date = ? WHERE team_id = ? LIMIT 1`;
+  db.query(sql, [due_date, teamId], (err, result) => {
+    if (err) {
+      console.error('DB_ERROR(PUT /teams/:teamId/due-date):', err);
+      return res.status(500).json({ error: 'DB_ERROR' });
+    }
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'NOT_FOUND' });
+    }
+    return res.json({ success: true, due_date });
+  });
+});
+
+// (이미 제안한 수정) all=true일 때 assigned_user_id 필터 해제
 app.get('/todos/:teamId', requireUser, (req, res) => {
   const userId = req.user.id;
   const { teamId } = req.params;
-  const { scope_type, start, end } = req.query;
+  const { scope_type, start, end, all } = req.query;
 
-  const params = [teamId, userId];
-  let where = `team_id = ? AND assigned_user_id = ?`;
+  const showAll = String(all).toLowerCase() === 'true';
+
+  const params = [teamId];
+  let where = `team_id = ?`;
+
+  if (!showAll) {
+    where += ` AND assigned_user_id = ?`;
+    params.push(userId);
+  }
 
   if (scope_type) {
     where += ` AND COALESCE(scope_type,
@@ -1357,7 +1463,6 @@ app.get('/todos/:teamId', requireUser, (req, res) => {
     params.push(scope_type);
   }
 
-  // 기간이 주어지면 "겹치는 것"을 모두 보여줌
   if (start && end) {
     where += ` AND NOT (scope_end_date < ? OR scope_start_date > ?)`;
     params.push(start, end);
@@ -1382,6 +1487,36 @@ app.get('/todos/:teamId', requireUser, (req, res) => {
   db.query(sql, params, (err, rows) => {
     if (err) return res.status(500).json({ error: 'DB_ERROR' });
     res.json(rows);
+  });
+});
+
+// PUT /teams/:teamId/activity-status
+// body: { activity_status: 'COMPLETED' }  // (지금은 종료만 지원)
+app.put('/teams/:teamId/activity-status', requireUser, (req, res) => {
+  const { teamId } = req.params;
+  const { activity_status } = req.body;
+
+  if (activity_status !== 'COMPLETED') {
+    return res.status(400).json({ error: 'BAD_REQUEST', message: 'activity_status는 COMPLETED만 허용됩니다.' });
+  }
+
+  // IN_PROGRESS -> COMPLETED 로만 전환
+  const sql = `
+    UPDATE teams
+    SET activity_status = 'COMPLETED'
+    WHERE team_id = ? AND (activity_status IS NULL OR activity_status = 'IN_PROGRESS')
+    LIMIT 1
+  `;
+  db.query(sql, [teamId], (err, result) => {
+    if (err) {
+      console.error('DB_ERROR(PUT /teams/:teamId/activity-status):', err);
+      return res.status(500).json({ error: 'DB_ERROR' });
+    }
+    if (result.affectedRows === 0) {
+      // 이미 COMPLETED이거나 팀 없음
+      return res.json({ success: true, activity_status: 'COMPLETED', note: 'No state change (already completed or not found)' });
+    }
+    return res.json({ success: true, activity_status: 'COMPLETED' });
   });
 });
 
