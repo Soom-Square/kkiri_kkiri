@@ -40,4 +40,5 @@ export type RootStackParamList = {
   MyActivityScreen: undefined;
   TodoScreen: undefined;
   TodoTeamScreen: undefined;
+  ActivityGoalsScreen: undefined;
 };
