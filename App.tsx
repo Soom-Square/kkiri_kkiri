@@ -17,6 +17,7 @@ import NotificationScreen from './src/screens/NotificationScreen';
 import TeamMakeScreen from './src/screens/TeamMakeScreen';
 import MatchingDetailScreen from './src/screens/MatchingDetailScreen'
 import ActivitySettingScreen from './src/screens/ActivitySettingScreen';
+import ActivityGoalsScreen from './src/screens/ActivityGoalsScreen';
 
 // MyPage 관련 스크린 import 추가
 import MyPage2 from './src/screens/mypage2';
@@ -172,6 +173,15 @@ export default function App() {
             component={ActivitySettingScreen}
             options={{
               title: '활동 편집',
+              headerBackTitle: '',
+              headerTitleAlign: 'center',
+            }}
+          />
+          <Stack.Screen
+            name="ActivityGoalsScreen"
+            component={ActivityGoalsScreen}
+            options={{
+              title: '전체 목표',
               headerBackTitle: '',
               headerTitleAlign: 'center',
             }}
