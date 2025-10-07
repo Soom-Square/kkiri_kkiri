@@ -1394,7 +1394,8 @@ app.get('/teams/:teamId', requireUser, (req, res) => {
     SELECT
       team_id,
       team_name,
-      DATE_FORMAT(due_date, '%Y-%m-%d') AS due_date,
+      DATE_FORMAT(created_at, '%Y-%m-%d') AS created_at,   -- 추가
+      DATE_FORMAT(due_date,   '%Y-%m-%d') AS due_date,
       activity_status
     FROM teams
     WHERE team_id = ?
@@ -1686,6 +1687,49 @@ app.get('/teams/:teamId/todos', requireUser, (req, res) => {
   });
 });
 
+// 팀 전역 투두(개인 필터 X), scope_type 필터 가능
+app.get('/teams/:teamId/todos-all', requireUser, (req, res) => {
+  const { teamId } = req.params;
+  const { scope_type } = req.query; // 예: '전체'
+
+  const params = [teamId];
+  let sql = `
+    SELECT
+      todo_id, title, status,
+      COALESCE(
+        scope_type,
+        CASE
+          WHEN DATEDIFF(scope_end_date, scope_start_date) = 0 THEN '일일'
+          WHEN DATEDIFF(scope_end_date, scope_start_date) BETWEEN 1 AND 6 THEN '주간'
+          ELSE '월간'
+        END
+      ) AS scope_type
+    FROM todos
+    WHERE team_id = ?
+  `;
+
+  if (scope_type) {
+    sql += ` AND COALESCE(scope_type,
+              CASE
+                WHEN DATEDIFF(scope_end_date, scope_start_date) = 0 THEN '일일'
+                WHEN DATEDIFF(scope_end_date, scope_start_date) BETWEEN 1 AND 6 THEN '주간'
+                ELSE '월간'
+              END
+            ) = ?`;
+    params.push(scope_type);
+  }
+
+  sql += ` ORDER BY created_at ASC`;
+
+  db.query(sql, params, (err, rows) => {
+    if (err) {
+      console.error('DB_ERROR(GET /teams/:teamId/todos-all):', err);
+      return res.status(500).json({ error: 'DB_ERROR' });
+    }
+    res.json(rows);
+  });
+});
+
 // 팀원 todo 생성
 // POST /teams/:teamId/todos  { assigned_user_id, title, scope_type, scope_start_date, scope_end_date }
 app.post('/teams/:teamId/todos', requireUser, (req, res) => {
@@ -1747,6 +1791,54 @@ app.get('/teams/:teamId/progress', (req, res) => {
     const percent = total === 0 ? 0 : Math.round((done / total) * 100);
     res.json({ total, done, percent });
   });
+});
+
+// 3) 한 방에 계산해서 주는 메트릭
+app.get('/teams/:teamId/metrics', async (req, res) => {
+  const { teamId } = req.params;
+  const userId = Number(req.header('x-user-id'));
+  try {
+    // 팀 메타
+    const [[meta]] = await pool.query(
+      `SELECT created_at, due_date FROM teams WHERE team_id=?`, [teamId]
+    );
+
+    // 전체(scope=전체)
+    const [[overall]] = await pool.query(
+      `SELECT COUNT(*) AS total,
+              SUM(CASE WHEN status='완료' THEN 1 ELSE 0 END) AS done
+         FROM todos WHERE team_id=? AND scope_type='전체'`,
+      [teamId]
+    );
+
+    // 월간(내 할당)
+    const [[monthly]] = await pool.query(
+      `SELECT COUNT(*) AS total,
+              SUM(CASE WHEN status='완료' THEN 1 ELSE 0 END) AS done
+         FROM todos
+        WHERE team_id=? AND scope_type='월간' AND assigned_user_id=?`,
+      [teamId, userId || 0]
+    );
+
+    // 주간(내 할당)
+    const [[weekly]] = await pool.query(
+      `SELECT COUNT(*) AS total,
+              SUM(CASE WHEN status='완료' THEN 1 ELSE 0 END) AS done
+         FROM todos
+        WHERE team_id=? AND scope_type='주간' AND assigned_user_id=?`,
+      [teamId, userId || 0]
+    );
+
+    res.json({
+      meta,
+      overall,
+      monthly,
+      weekly
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'server error' });
+  }
 });
 
 // ✅ GET /teams/:teamId/daily-todos?date=YYYY-MM-DD&only_daily=true|false
