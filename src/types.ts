@@ -38,7 +38,7 @@ export type RootStackParamList = {
   ActivitySettingScreen: { teamId?: number }; // 여기에 추가
   NotificationScreen: undefined;
   MyActivityScreen: undefined;
-  TodoScreen: undefined;
+  TodoScreen: { teamId?: number | null };
   TodoTeamScreen: undefined;
   ActivityGoalsScreen: undefined;
 };

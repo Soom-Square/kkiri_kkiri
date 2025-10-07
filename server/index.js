@@ -1749,25 +1749,48 @@ app.get('/teams/:teamId/progress', (req, res) => {
   });
 });
 
-// ✅ 이슈트래커용 API 추가
-// GET /teams/:teamId/daily-todos - 특정 팀의 모든 일일 todo 조회
+// ✅ GET /teams/:teamId/daily-todos?date=YYYY-MM-DD&only_daily=true|false
 app.get('/teams/:teamId/daily-todos', (req, res) => {
   const { teamId } = req.params;
-  const today = new Date().toISOString().split('T')[0];
+  const { date, only_daily } = req.query;
+
+  // 로컬타임 보정된 오늘 (fallback)
+  const now = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+  const todayLocal = local.toISOString().split('T')[0];
+
+  const targetDate =
+    (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date))
+      ? date
+      : todayLocal;
+
+  const params = [teamId, targetDate];
+
+  // only_daily=true 일 때만 '일일' 제한, 아니면 기간에 걸친 모든 목표 포함
+  const scopeFilter =
+    String(only_daily).toLowerCase() === 'true'
+      ? ` AND COALESCE(t.scope_type,
+            CASE
+              WHEN DATEDIFF(t.scope_end_date, t.scope_start_date) = 0 THEN '일일'
+              WHEN DATEDIFF(t.scope_end_date, t.scope_start_date) BETWEEN 1 AND 6 THEN '주간'
+              ELSE '월간'
+            END
+          ) = '일일'`
+      : '';
 
   const sql = `
     SELECT 
       t.todo_id,
       t.title,
       t.status,
-      u.name as assigned_user_name,
-      t.scope_start_date,
-      t.scope_end_date
+      u.name AS assigned_user_name,
+      DATE_FORMAT(t.scope_start_date, '%Y-%m-%d') AS scope_start_date,
+      DATE_FORMAT(t.scope_end_date, '%Y-%m-%d')   AS scope_end_date
     FROM todos t
     INNER JOIN users u ON t.assigned_user_id = u.id
     WHERE t.team_id = ?
-      AND t.scope_type = '일일'
       AND ? BETWEEN t.scope_start_date AND t.scope_end_date
+      ${scopeFilter}
     ORDER BY 
       CASE t.status 
         WHEN '미진행' THEN 1 
@@ -1778,7 +1801,7 @@ app.get('/teams/:teamId/daily-todos', (req, res) => {
       t.created_at ASC
   `;
 
-  db.query(sql, [teamId, today], (err, results) => {
+  db.query(sql, params, (err, results) => {
     if (err) {
       console.error('❌ 팀 목표 조회 오류:', err);
       return res.status(500).json({ error: 'DB_ERROR', message: '서버 오류' });
@@ -1786,6 +1809,7 @@ app.get('/teams/:teamId/daily-todos', (req, res) => {
     res.json(results);
   });
 });
+
 
 // ✅ GET /teams/:teamId/announcements - 팀 공지사항 조회 (독립된 라우트)
 app.get('/teams/:teamId/announcements', (req, res) => {

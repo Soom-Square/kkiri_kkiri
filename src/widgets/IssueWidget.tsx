@@ -5,7 +5,10 @@ const API_BASE_URL = __DEV__
   ? (Platform.OS === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000')
   : 'https://your.api'; // 프로덕션 주소
 
-type Props = { teamId?: number | null };
+type Props = { 
+  teamId?: number | null; 
+  refreshKey?: number; // ✅ 상위에서 새로고침 트리거 받을 prop 추가
+};
 
 type DailyTodo = {
   todo_id: number;
@@ -47,19 +50,27 @@ const getSectionTabStyles = (sectionType: string) => {
   }
 };
 
-export default function IssueWidget({ teamId }: Props) {
+export default function IssueWidget({ teamId, refreshKey }: Props) {
   const [items, setItems] = useState<DailyTodo[]>([]);
   const [loading, setLoading] = useState(false);
 
+  /** ✅ 서버에서 todo 가져오기 */
   const fetchDaily = useCallback(async () => {
     if (!teamId) { 
       setItems([]); 
       return; 
     }
+
     try {
       setLoading(true);
-      const r = await fetch(`${API_BASE_URL}/teams/${teamId}/daily-todos`);
-      const json: DailyTodo[] = await r.json();
+      const res = await fetch(`${API_BASE_URL}/teams/${teamId}/daily-todos`);
+      if (!res.ok) {
+        console.error('❌ 서버 응답 오류:', res.status);
+        setItems([]);
+        return;
+      }
+
+      const json: DailyTodo[] = await res.json();
       setItems(Array.isArray(json) ? json : []);
     } catch (e) {
       console.error('일일 todo 가져오기 실패:', e);
@@ -69,11 +80,12 @@ export default function IssueWidget({ teamId }: Props) {
     }
   }, [teamId]);
 
-  useEffect(() => { 
-    fetchDaily(); 
-  }, [fetchDaily]);
+  /** ✅ 새로고침 트리거(refreshKey)나 teamId 변경 시 데이터 재요청 */
+  useEffect(() => {
+    fetchDaily();
+  }, [fetchDaily, refreshKey]); // 🔥 핵심 수정 포인트
 
-  // 상태별 그룹
+  // 상태별 그룹 나누기
   const groups = useMemo(() => ({
     '할 일': items.filter(i => i.status === '미진행'),
     '진행중': items.filter(i => i.status === '진행중'),
@@ -162,6 +174,7 @@ export default function IssueWidget({ teamId }: Props) {
   );
 }
 
+/** ✅ 스타일 정의 */
 const styles = StyleSheet.create({
   issueTracker: {
     marginTop: 16,
@@ -180,9 +193,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#E5E7EB',
     width: '100%',
   },
-  sectionsContainer: {
-    // 섹션들을 세로로 배치
-  },
+  sectionsContainer: {},
   sectionContainer: {
     marginBottom: 12,
   },
@@ -201,7 +212,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
-  // 섹션 박스 (고정 크기)
   sectionBox: {
     width: 368,
     height: 154,
@@ -218,7 +228,6 @@ const styles = StyleSheet.create({
   sectionContent: {
     paddingBottom: 8,
   },
-  // Todo 아이템 스타일
   todoItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',

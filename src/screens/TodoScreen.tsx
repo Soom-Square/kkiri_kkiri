@@ -15,6 +15,7 @@ import {
   Alert,
   ToastAndroid
 } from 'react-native';
+import { useRoute } from '@react-navigation/native';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '@react-navigation/native';
@@ -47,6 +48,9 @@ type Team = {
 };
 
 type Period = { start: string; end: string; label: string };
+
+
+
 
 // 날짜 유틸
 const fmt2 = (n: number) => (n < 10 ? `0${n}` : `${n}`);
@@ -117,8 +121,10 @@ const periodOf = (scope: Scope, anchor: Date): Period => {
 
 export default function TodoScreen() {
   const navigation = useNavigation<any>();
+   const route = useRoute<any>();
   const { user } = useAuth();
   const authHeader = user ? { 'x-user-id': String(user.id) } : undefined;
+  const initialTeamId = route.params?.teamId ?? null;
 
   // 팀 선택
   const [teams, setTeams] = useState<Team[]>([]);
@@ -156,20 +162,34 @@ export default function TodoScreen() {
   const [partModalVisible, setPartModalVisible] = useState(false);
   const [partInput, setPartInput] = useState('');
 
+
+  // ✅ 공통 정렬 함수 (두 화면 모두 같은 순서 보장)
+  const sortTeams = (arr: Team[]) =>
+    [...arr].sort((a, b) => a.team_name.localeCompare(b.team_name));
+
   // 팀 목록 로딩
-  useEffect(() => {
-    if (!user) return;
-    setLoadingTeams(true);
-    axios
-      .get<Team[]>(`${API_BASE_URL}/my-teams`, { headers: authHeader })
-      .then((res) => {
-        const data = res.data ?? [];
-        setTeams(data);
-        if (data.length) setSelected(data[0]);
-      })
-      .catch((err) => console.error('팀 목록 불러오기 실패:', err))
-      .finally(() => setLoadingTeams(false));
-  }, [user]);
+  // ✅ 팀 목록 로드 + ActivityScreen에서 전달된 초기 teamId 반영
+useEffect(() => {
+  if (!user) return;
+  setLoadingTeams(true);
+  axios
+    .get<Team[]>(`${API_BASE_URL}/my-teams`, { headers: authHeader })
+    .then((res) => {
+      const data = sortTeams(res.data ?? []); // ✅ 정렬 통일
+      setTeams(data);
+
+      // ✅ ActivityScreen에서 전달된 팀ID가 있으면 그대로 선택
+      if (initialTeamId) {
+        const matched = data.find((t) => t.team_id === initialTeamId);
+        if (matched) setSelected(matched);
+        else if (data.length) setSelected(data[0]);
+      } else if (data.length) {
+        setSelected(data[0]);
+      }
+    })
+    .catch((err) => console.error('팀 목록 불러오기 실패:', err))
+    .finally(() => setLoadingTeams(false));
+}, [user, initialTeamId]);
 
   // 기간별 데이터 로딩
   const fetchRange = async (scope: Scope) => {

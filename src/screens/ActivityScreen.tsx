@@ -348,9 +348,19 @@ export default function ActivityScreen() {
           </ScrollView>
 
           {/* 떠 있는 FAB (스크롤과 독립) */}
-          <Pressable style={styles.fab} onPress={() => navigation.navigate('TodoScreen')}>
-            <Image source={require('../assets/plus-circle.png')} style={{ width: 56, height: 56 }} />
-          </Pressable>
+          <Pressable
+  style={styles.fab}
+  onPress={() =>
+    navigation.navigate('TodoScreen', {
+      teamId: selected?.teamId ?? null, // ✅ 현재 선택된 팀 ID 넘김
+    })
+  }
+>
+  <Image
+    source={require('../assets/plus-circle.png')}
+    style={{ width: 56, height: 56 }}
+  />
+</Pressable>
           </View>
         </SafeAreaView>
 
