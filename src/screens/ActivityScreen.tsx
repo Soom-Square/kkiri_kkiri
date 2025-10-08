@@ -74,6 +74,8 @@ async function fetchJson<T = any>(url: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
+
+
 export default function ActivityScreen() {
   const { user } = useAuth();
   const currentUserId = user?.id;
@@ -244,35 +246,39 @@ export default function ActivityScreen() {
   }, [teamMeta]);
 
   // ───────────── UI
+ 
+
+
+
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
       <StatusBar barStyle="dark-content" />
-      <View style={[styles.container, { paddingTop: 12 }]}>
+      <View style={[styles.container, { paddingTop: 12 ,}]}>
         {/* 상단 */}
         <View style={styles.topRow}>
           <Text style={styles.brand}>끼리끼리</Text>
           <View style={styles.iconRow}>
-            <Pressable onPress={() => navigation.navigate('MyActivityScreen')}>
-              <Image source={require('../assets/folder.png')} style={styles.icon} />
+            <Pressable hitSlop={10} onPress={() => navigation.navigate('MyActivityScreen')}>
+              <Image source={require('../assets/folder.png')} style={styles.icon} resizeMode="contain" />
             </Pressable>
-            <Pressable
-              onPress={() =>
-                navigation.navigate('ActivitySettingScreen', { teamId: selected?.teamId ?? undefined })
-              }
-            >
-              <Image source={require('../assets/settings-01.png')} style={[styles.icon, { marginLeft: 16 }]} />
+            <Pressable hitSlop={10} onPress={() => navigation.navigate('ActivitySettingScreen', {teamId: selected?.teamId ?? undefined,})}>
+              <Image source={require('../assets/settings-01.png')} style={[styles.icon, { marginLeft: 16 }]} resizeMode="contain" />
             </Pressable>
-            <Pressable onPress={() => navigation.navigate('NotificationScreen')}>
-              <Image source={require('../assets/bell.png')} style={[styles.icon, { marginLeft: 16 }]} />
+            <Pressable hitSlop={10} onPress={() => navigation.navigate('NotificationScreen')}>
+              <Image source={require('../assets/bell.png')} style={[styles.icon, { marginLeft: 16 }]} resizeMode="contain" />
             </Pressable>
           </View>
         </View>
+
+        
 
         {/* 드롭다운 + 역할 */}
         <View style={styles.selectRow}>
           <View style={styles.dropdown}>
             <Pressable style={styles.dropdownBtn} onPress={() => setOpen(v => !v)}>
-              <Text style={styles.dropdownText}>{selected ? selected.teamName : '내 활동 선택'}</Text>
+              <Text style={styles.dropdownText}>
+                {selected ? selected.teamName : '내 활동 선택'}
+              </Text>
               <Text style={styles.chevron}>{open ? '▲' : '▼'}</Text>
             </Pressable>
 
@@ -280,10 +286,13 @@ export default function ActivityScreen() {
               <View style={styles.dropdownList}>
                 <FlatList
                   data={options}
-                  keyExtractor={item => String(item.teamId)}
+                  keyExtractor={(item) => String(item.teamId)}
                   renderItem={({ item }) => (
                     <Pressable
-                      onPress={() => { setSelected(item); setOpen(false); }}
+                      onPress={() => {
+                        setSelected(item);
+                        setOpen(false);
+                      }}
                       style={({ pressed }) => [styles.dropdownItem, pressed && { opacity: 0.6 }]}
                     >
                       <Text style={styles.dropdownItemText}>{item.teamName}</Text>
@@ -293,10 +302,16 @@ export default function ActivityScreen() {
               </View>
             )}
           </View>
-          <Text style={styles.partText}>{selected?.part || '—'}</Text>
-        </View>
+          
 
-        {/* 본문 */}
+          <Text style={styles.partText}>{selected?.part ? humanizePart(selected.part) : '—'}</Text>
+        </View> 
+
+
+
+
+        {/* 스크롤 컨테이너 */}
+              {/* 본문 */}
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollBody}>
           {/* 헤더 + 토글 버튼 */}
           <View style={{ marginTop: 24 }}>
@@ -354,142 +369,6 @@ export default function ActivityScreen() {
             )}
           </View>
 
-          {/* 섹션들 */}
-          <View style={{ marginTop: 20 }}>
-            <Section title="월간 목표" sub={monthLabel()} data={monthlyTodos} />
-          </View>
-          <View style={{ marginTop: 24, paddingBottom: 120 }}>
-            <Section title="주간 목표" sub={weekLabel()} data={weeklyTodos} />
-          </View>
-
-          {/* (선택) 위젯들 */}
-          <View style={{ marginTop: 12 }}>
-            {widgetPrefs
-              .filter(w => w.visible)
-              .sort((a, b) => a.order - b.order)
-              .map(w => {
-                const C = WIDGET_COMPONENTS[w.id];
-                return <C key={w.id} teamId={selected?.teamId ?? null} />;
-              })}
-          </View>
-        </ScrollView>
-
-        {/* FAB */}
-        <Pressable style={styles.fab} onPress={() => navigation.navigate('TodoScreen')}>
-          <Image source={require('../assets/plus-circle.png')} style={{ width: 56, height: 56 }} />
-        </Pressable>
-      </View>
-    </SafeAreaView>
-  );
-}
-
-function Section({ title, sub, data }: { title: string; sub: string; data: Todo[] }) {
-  const loading = false;
-  const TodoItem = ({ item }: { item: Todo }) => {
-    const isDone = item.status === '완료';
-    return (
-      <View style={styles.todoRow}>
-        <Text style={[styles.todoText, isDone && styles.todoDone]} numberOfLines={2}>
-          {item.title}
-        </Text>
-      </View>
-    );
-  };
-  return (
-    <View style={styles.sectionRow}>
-      <View style={styles.sectionLeft}>
-        <Text style={styles.sectionTitle}>{title}</Text>
-        <Text style={styles.sectionSubUnder}>{sub}</Text>
-      </View>
-      <View style={styles.sectionRight}>
-        {data.length === 0 ? (
-          <Text style={styles.emptyText}>{loading ? '불러오는 중...' : '등록된 항목이 없어요'}</Text>
-        ) : (
-          <FlatList
-            data={data}
-            keyExtractor={t => String(t.todo_id)}
-            renderItem={({ item }) => <TodoItem item={item} />}
-            scrollEnabled={false}
-          />
-        )}
-      </View>
-    </View>
-  );
-<<<<<<< HEAD
-
-  return (
-    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
-      <StatusBar barStyle="dark-content" />
-      <View style={[styles.container, { paddingTop: 12 ,}]}>
-        {/* 상단 */}
-        <View style={styles.topRow}>
-          <Text style={styles.brand}>끼리끼리</Text>
-          <View style={styles.iconRow}>
-            <Pressable hitSlop={10} onPress={() => navigation.navigate('MyActivityScreen')}>
-              <Image source={require('../assets/folder.png')} style={styles.icon} resizeMode="contain" />
-            </Pressable>
-            <Pressable hitSlop={10} onPress={() => navigation.navigate('ActivitySettingScreen', {teamId: selected?.teamId ?? undefined,})}>
-              <Image source={require('../assets/settings-01.png')} style={[styles.icon, { marginLeft: 16 }]} resizeMode="contain" />
-            </Pressable>
-            <Pressable hitSlop={10} onPress={() => navigation.navigate('NotificationScreen')}>
-              <Image source={require('../assets/bell.png')} style={[styles.icon, { marginLeft: 16 }]} resizeMode="contain" />
-            </Pressable>
-          </View>
-        </View>
-
-        {/* 드롭다운 + 역할 */}
-        <View style={styles.selectRow}>
-          <View style={styles.dropdown}>
-            <Pressable style={styles.dropdownBtn} onPress={() => setOpen(v => !v)}>
-              <Text style={styles.dropdownText}>
-                {selected ? selected.teamName : '내 활동 선택'}
-              </Text>
-              <Text style={styles.chevron}>{open ? '▲' : '▼'}</Text>
-            </Pressable>
-
-            {open && (
-              <View style={styles.dropdownList}>
-                <FlatList
-                  data={options}
-                  keyExtractor={(item) => String(item.teamId)}
-                  renderItem={({ item }) => (
-                    <Pressable
-                      onPress={() => {
-                        setSelected(item);
-                        setOpen(false);
-                      }}
-                      style={({ pressed }) => [styles.dropdownItem, pressed && { opacity: 0.6 }]}
-                    >
-                      <Text style={styles.dropdownItemText}>{item.teamName}</Text>
-                    </Pressable>
-                  )}
-                />
-              </View>
-            )}
-          </View>
-
-          <Text style={styles.partText}>{selected?.part ? humanizePart(selected.part) : '—'}</Text>
-        </View>
-        {/* 스크롤 컨테이너 */}
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollBody}  // 패딩/여유공간은 여기서
-        keyboardShouldPersistTaps="handled"
-      >
-        {/* 진행률 */}
-        <View style={{ marginTop: 24 }}>
-          <View style={styles.progressHeader}>
-            <Text style={styles.progressTitle}>이번 달 {progress.percent}% 완료!</Text>
-            <Text style={styles.progressCaption}>이번달</Text>
-          </View>
-          <View style={styles.progressBarWrap}>
-            <View style={styles.progressBarTrack}>
-              <View style={[styles.progressBarFill, { width: `${progress.percent}%` }]} />
-            </View>
-            <Text style={styles.progressMeta}>완료 {progress.done} / 전체 {progress.total}</Text>
-          </View>
-        </View>
-
         {/* 섹션들: 왼쪽 타이틀+기간, 오른쪽 리스트 */}
         <View style={{ marginTop: 20 }}>
           <Section title="월간 목표" sub={monthLabel()} data={monthlyTodos} />
@@ -539,12 +418,10 @@ function Section({ title, sub, data }: { title: string; sub: string; data: Todo[
   
 }
 
-
 function humanizePart(part: string) {
   if (!part) return '';
   return part;
-=======
->>>>>>> origin/develop
+
 }
 
 const styles = StyleSheet.create({
@@ -607,3 +484,37 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
 });
+
+function Section({ title, sub, data }: { title: string; sub: string; data: Todo[] }) {
+  const loading = false;
+  const TodoItem = ({ item }: { item: Todo }) => {
+    const isDone = item.status === '완료';
+    return (
+      <View style={styles.todoRow}>
+        <Text style={[styles.todoText, isDone && styles.todoDone]} numberOfLines={2}>
+          {item.title}
+        </Text>
+      </View>
+    );
+  };
+  return (
+    <View style={styles.sectionRow}>
+      <View style={styles.sectionLeft}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        <Text style={styles.sectionSubUnder}>{sub}</Text>
+      </View>
+      <View style={styles.sectionRight}>
+        {data.length === 0 ? (
+          <Text style={styles.emptyText}>{loading ? '불러오는 중...' : '등록된 항목이 없어요'}</Text>
+        ) : (
+          <FlatList
+            data={data}
+            keyExtractor={t => String(t.todo_id)}
+            renderItem={({ item }) => <TodoItem item={item} />}
+            scrollEnabled={false}
+          />
+        )}
+      </View>
+    </View>
+  );
+}
