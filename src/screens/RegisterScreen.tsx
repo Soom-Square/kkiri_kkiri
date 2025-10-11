@@ -4,7 +4,7 @@ import CustomTextInput from '../components/CustomTextInput';
 import colors from '../config/colors';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../../App.tsx'; // 실제 경로로 수정
+import { RootStackParamList } from '../types'; // 실제 경로로 수정
 
 type RegisterScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Register'>;
 

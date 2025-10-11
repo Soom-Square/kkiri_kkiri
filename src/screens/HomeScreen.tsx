@@ -9,6 +9,8 @@ import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../types'; // 경로: src/screens 기준
 import CommonHeader from '../components/CommonHeader';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import type { BottomTabParamList } from '../types';
 
 type RootNav = StackNavigationProp<RootStackParamList>;
 // const H_PADDING = 22; // ← 화면 좌우 공통 여백
@@ -44,6 +46,10 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [activities, setActivities] = useState<Activity[]>([]);
   const rootNav = useNavigation<RootNav>(); // ← 루트 스택 네비게이터
+
+  // 컴포넌트 내부
+  type TabNav = BottomTabNavigationProp<BottomTabParamList, '홈'>;
+  const tabNav = useNavigation<TabNav>();
 
   useEffect(() => {
     let mounted = true;
@@ -137,8 +143,19 @@ export default function HomeScreen() {
         />
 
         {/* 모집중 */}
-        <View style={{ paddingHorizontal: 20, marginTop: 24 }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            paddingHorizontal: 20,
+            marginTop: 24,
+          }}
+        >
           <Text style={styles.sectionHeader}>모집중</Text>
+          <TouchableOpacity onPress={() => tabNav.navigate('정보')}>
+            <Text style={styles.more}>더보기</Text>
+          </TouchableOpacity>
         </View>
         {/* 구분선은 목록 여백에 맞춰 정렬 */}
         <View style={[styles.divider, { marginHorizontal: 20 }]} />
@@ -154,9 +171,6 @@ export default function HomeScreen() {
               >
                 <View style={styles.categoryHeader}>
                   <Text style={styles.categoryTitle}>{cat}</Text>
-                  <TouchableOpacity onPress={() => {}}>
-                    <Text style={styles.more}>더보기</Text>
-                  </TouchableOpacity>
                 </View>
 
                 {list.length === 0 ? (

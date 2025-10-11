@@ -42,3 +42,11 @@ export type RootStackParamList = {
   TodoTeamScreen: undefined;
   ActivityGoalsScreen: undefined;
 };
+
+export type BottomTabParamList = {
+  홈: undefined;
+  정보: undefined;
+  활동: undefined;
+  매칭: undefined;
+  마이페이지: undefined;
+};
