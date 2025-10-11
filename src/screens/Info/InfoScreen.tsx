@@ -14,6 +14,7 @@ import {
 import axios from 'axios';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import CommonHeader from '../../components/CommonHeader';
 
 const BASE_URL =
   Platform.OS === 'android'
@@ -76,19 +77,7 @@ const InfoScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* 상단 로고 + 종 아이콘 */}
-      <View style={styles.header}>
-        <Text style={styles.logo}>끼리끼리</Text>
-        <TouchableOpacity onPress={() => navigation.navigate('Notifications' as never)}>
-          <Image
-            source={require('../../assets/bell.png')}
-            style={{ width: 24, height: 24, tintColor: '#101828' }}
-            resizeMode="contain"
-          />
-        </TouchableOpacity>
-      </View>
-
-      {/* 검색창 */}
+      <CommonHeader bottomSpace={14} /> 
       <View style={styles.searchContainer}>
         <Image
           source={require('../../assets/search-md.png')}

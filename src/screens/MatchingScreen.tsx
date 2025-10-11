@@ -16,6 +16,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuth } from '../context/AuthContext';
 import { useFocusEffect } from '@react-navigation/native';
+import CommonHeader from '../components/CommonHeader';
 
 const BASE_URL =
   Platform.OS === 'android'
@@ -121,18 +122,7 @@ const MatchingScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* 상단 로고 + 알림(이미지) */}
-      <View style={styles.header}>
-        <Text style={styles.logo}>끼리끼리</Text>
-        <TouchableOpacity onPress={() => navigation.navigate('Notifications' as never)}>
-          <Image
-            source={require('../assets/bell.png')}
-            style={{ width: 24, height: 24, tintColor: '#101828' }}
-            resizeMode="contain"
-          />
-        </TouchableOpacity>
-      </View>
-
+      <CommonHeader bottomSpace={14} /> 
       {/* 검색창 (돋보기 이미지) */}
       <View style={styles.searchContainer}>
         <Image

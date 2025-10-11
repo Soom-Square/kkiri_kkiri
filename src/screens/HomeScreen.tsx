@@ -8,6 +8,7 @@ import axios from 'axios';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../types'; // 경로: src/screens 기준
+import CommonHeader from '../components/CommonHeader';
 
 type RootNav = StackNavigationProp<RootStackParamList>;
 // const H_PADDING = 22; // ← 화면 좌우 공통 여백
@@ -113,13 +114,7 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { paddingTop: TOP_EXTRA }]}>
-      {/* 헤더 */}
-      <View style={styles.header}>
-        <Text style={styles.logo}>끼리끼리</Text>
-        <TouchableOpacity onPress={() => rootNav.navigate('Notifications')}>
-          <Image source={require('../assets/bell.png')} style={styles.bellIcon} resizeMode="contain" />
-        </TouchableOpacity>
-      </View>
+      <CommonHeader bottomSpace={0} /> 
       <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 24 }}>
         {/* 헤더와 활동 사이 여유 공간 */}
         <View style={{ height: 20 }} />
