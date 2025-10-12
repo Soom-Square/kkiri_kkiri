@@ -4,6 +4,8 @@ const mysql = require('mysql2');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const fs = require('fs'); // ✅ 추가: 파일 시스템 모듈
+const bcrypt = require('bcrypt'); // 파일 상단에 추가하세요
+const SALT_ROUNDS = 10;
 
 const app = express();
 const PORT = 3000;
@@ -64,59 +66,62 @@ db.connect((err) => {
 });
 
 // 회원가입 API
-app.post('/register', (req, res) => {
-  const { email, password, name, department, student_number, birth } = req.body;
+app.post('/register', async (req, res) => {
+  try {
+    const { email, password, name, department, studentId, birth } = req.body;
 
-  // 🔹 필수값 확인
-  if (!email || !password || !name) {
-    return res.status(400).json({ message: '필수 항목이 누락되었습니다.' });
-  }
-
-  // 🔹 users 테이블에 새 사용자 추가
-  const sql = `
-    INSERT INTO users (email, password, name, department, student_number, birth, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
-  `;
-  const values = [email, password, name, department || null, student_number || null, birth || null];
-
-  db.query(sql, values, (err, result) => {
-    if (err) {
-      console.error('회원가입 오류:', err);
-      return res.status(500).json({ message: '서버 오류' });
+    // 필수값 확인
+    if (!email || !password || !name) {
+      return res.status(400).json({ message: '필수 항목이 누락되었습니다.' });
     }
 
-    const newUserId = result.insertId;
-
-    // 🔹 user_settings 기본값 생성 (모든 알림 ON)
-    const settingsSql = `
-      INSERT INTO user_settings (user_id, notify_team_matching, notify_todos, notify_announcements)
-      VALUES (?, 1, 1, 1)
-    `;
-    db.query(settingsSql, [newUserId], (settingsErr) => {
-      if (settingsErr) {
-        console.error('user_settings 기본값 생성 오류:', settingsErr);
-        // ⚠️ 회원가입은 성공했으나, 세팅 초기화 실패한 경우
-        return res.status(201).json({
-          message: '회원가입은 완료되었지만 알림 설정 초기화에 실패했습니다.',
-          user_id: newUserId,
-        });
+    // 이메일 중복 검사
+    const checkSql = 'SELECT id FROM users WHERE email = ?';
+    db.query(checkSql, [email], async (checkErr, checkResult) => {
+      if (checkErr) {
+        console.error('이메일 중복 검사 오류:', checkErr);
+        return res.status(500).json({ message: '서버 오류' });
       }
 
-      console.log(`✅ 새 유저 ${newUserId}의 user_settings 기본값 생성 완료`);
-      return res.status(201).json({
-        message: '회원가입 성공',
-        user_id: newUserId,
-      });
-    });
-  });
-});
+      if (checkResult.length > 0) {
+        return res.status(400).json({ message: '이미 가입된 이메일입니다.' });
+      }
 
+      try {
+        // ✅ 비밀번호 암호화
+        const hashedPw = await bcrypt.hash(password, SALT_ROUNDS);
+
+        const sql = `
+          INSERT INTO users (email, password, name, department, student_number, birth)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `;
+        const values = [email, hashedPw, name, department, studentId, birth];
+
+        db.query(sql, values, (err, result) => {
+          if (err) {
+            console.error('회원가입 오류:', err);
+            return res.status(500).json({ message: '서버 오류' });
+          }
+
+          return res.status(201).json({ message: '회원가입 성공' });
+        });
+      } catch (hashError) {
+        console.error('비밀번호 해싱 오류:', hashError);
+        return res.status(500).json({ message: '비밀번호 처리 중 오류가 발생했습니다.' });
+      }
+    });
+  } catch (error) {
+    console.error('회원가입 처리 오류:', error);
+    return res.status(500).json({ message: '서버 내부 오류' });
+  }
+});
 // 서버 시작
 app.listen(PORT, () => {
   console.log(`🚀 서버 실행 중: http://localhost:${PORT}`);
 });
 
-// 로그인 API
+// 로그인 API (bcrypt 적용 버전)
+
 app.post('/login', (req, res) => {
   const { email, password } = req.body;
 
@@ -124,29 +129,44 @@ app.post('/login', (req, res) => {
     return res.status(400).json({ message: '이메일과 비밀번호를 입력해주세요.' });
   }
 
-  const sql = `SELECT * FROM users WHERE email = ? AND password = ?`;
-  db.query(sql, [email, password], (err, results) => {
+  const sql = `SELECT * FROM users WHERE email = ?`;
+  db.query(sql, [email], async (err, results) => {
     if (err) {
       console.error('로그인 오류:', err);
       return res.status(500).json({ message: '서버 오류' });
     }
 
+    // 이메일 없음
     if (results.length === 0) {
       return res.status(401).json({ message: '이메일 또는 비밀번호가 일치하지 않습니다.' });
     }
 
     const user = results[0];
-    return res.status(200).json({
-      message: '로그인 성공',
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        department: user.department,
-        studentId: user.student_number, // 데이터베이스 student_number를 studentId로 반환
-        birth: user.birth,
+
+    try {
+      // 🔒 bcrypt로 비밀번호 비교
+      const isMatch = await bcrypt.compare(password, user.password);
+
+      if (!isMatch) {
+        return res.status(401).json({ message: '이메일 또는 비밀번호가 일치하지 않습니다.' });
       }
-    });
+
+      // 로그인 성공 시
+      return res.status(200).json({
+        message: '로그인 성공',
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          department: user.department,
+          studentId: user.student_number, // DB 필드명 → 프론트용 필드명
+          birth: user.birth,
+        },
+      });
+    } catch (compareError) {
+      console.error('비밀번호 비교 오류:', compareError);
+      return res.status(500).json({ message: '로그인 처리 중 오류가 발생했습니다.' });
+    }
   });
 });
 
@@ -2756,3 +2776,7 @@ app.get('/api/miniportfolios/:portfolioId', (req, res) => {
   });
 });
 
+//비밀번호 재설정
+app.use('/api/auth', require('./routes/auth.reset')); // 위 파일 경로 맞춰서
+
+app.listen(3000, () => console.log('API on 3000'));

@@ -34,6 +34,8 @@ export type RootStackParamList = {
   MyPage4: { user: User };
   PortfolioListScreen: undefined;
   PortfolioScreen: { portfolioId: number };
+  PasswordResetScreen: undefined;
+
   // Activity 관련
   ActivityScreen: undefined;
   ActivitySettingScreen: { teamId?: number }; // 여기에 추가

@@ -131,13 +131,21 @@ const SettingScreen = () => {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
-      {/* 계정 */}
+      {/* 계정 섹션 */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>계정</Text>
         <View style={styles.itemContainer}>
           <Text style={styles.itemLabel}>아이디</Text>
           <Text style={styles.itemValue}>{user.email}</Text>
         </View>
+
+        <TouchableOpacity 
+          style={styles.itemContainer} 
+          onPress={() => navigation.navigate('PasswordResetScreen')}
+        >
+          <Text style={styles.itemLabel}>비밀번호 변경</Text>
+          <Text style={styles.itemArrow}>{'>'}</Text>
+        </TouchableOpacity>
       </View>
 
       {/* 알림 설정 */}
