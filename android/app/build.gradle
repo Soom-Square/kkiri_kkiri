@@ -73,17 +73,18 @@ def enableProguardInReleaseBuilds = false
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
 android {
-    ndkVersion rootProject.ext.ndkVersion
+    
+    ndkVersion = rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
-    compileSdk rootProject.ext.compileSdkVersion
-
-    namespace "com.ch02_1"
+    compileSdk = rootProject.ext.compileSdkVersion
+    
+    namespace 'com.anonymous.ch02_1'
     defaultConfig {
-        applicationId "com.ch02_1"
+        applicationId 'com.anonymous.ch02_1'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
-        versionName "1.0"
+        versionName "0.0.1"
     }
     signingConfigs {
         debug {
