@@ -99,6 +99,8 @@ export default function ActivityScreen() {
 
   const [widgetPrefs, setWidgetPrefs] = useState<WidgetPref[]>(DEFAULT_WIDGET_PREFS);
 
+  const [issueRefreshKey, setIssueRefreshKey] = useState(0);
+
   // 그래프 접힘/펼침 상태 (기본 펼침)
   const [graphOpen, setGraphOpen] = useState(true);
 
@@ -214,6 +216,7 @@ export default function ActivityScreen() {
         if (nextSelected) await fetchAllDataForTeam(nextSelected.teamId);
       };
       reload();
+      setIssueRefreshKey(k => k + 1);
       return () => { alive = false; };
     }, [fetchTeams, fetchAllDataForTeam, selected?.teamId]),
   );
@@ -364,14 +367,20 @@ export default function ActivityScreen() {
             <Section title="주간 목표" sub={weekLabel()} data={weeklyTodos} />
           </View>
 
-          {/* 위젯 영역 */}
+          {/* 위젯 영역: 설정(가시성/순서)에 따라 렌더 */}
           <View style={{ marginTop: 12 }}>
             {widgetPrefs
               .filter(w => w.visible)
               .sort((a,b)=>a.order-b.order)
               .map(w => {
                 const C = WIDGET_COMPONENTS[w.id];
-                return <C key={w.id} teamId={selected?.teamId ?? null} />;
+                return (
+                  <C
+                    key={w.id}
+                    teamId={selected?.teamId ?? null}
+                    {...(w.id === 'issue' ? { refreshKey: issueRefreshKey } : {})}
+                  />
+                );
               })}
           </View>
         </ScrollView>
