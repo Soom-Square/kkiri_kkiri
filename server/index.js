@@ -2309,22 +2309,18 @@ app.get('/api/miniportfolios/:userId', (req, res) => {
 
   db.query(sql, [userId], (err, result) => {
     if (err) {
-      console.error('포트폴리오 목록 조회 오류:', err);
+      console.error('❌ 포트폴리오 목록 조회 오류:', err);
       return res.status(500).json({ success: false, message: '서버 오류' });
     }
     res.json(result);
   });
 });
 
-const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
-const PDFKit = require('pdfkit');
-
-// ✅ PDF 생성 라우트
-// ✅ 포트폴리오 PDF 생성 (todos 자동 요약 포함)
+// ✅ 포트폴리오 PDF 생성
 app.get('/api/miniportfolios/:portfolioId/pdf', async (req, res) => {
   const { portfolioId } = req.params;
 
-  // 1️⃣ 기본 포트폴리오 정보 + 팀 ID 조회
+  // 1️⃣ 포트폴리오 기본 데이터 조회
   const portfolioSql = `
     SELECT 
       mp.portfolio_id,
@@ -2347,15 +2343,16 @@ app.get('/api/miniportfolios/:portfolioId/pdf', async (req, res) => {
 
   db.query(portfolioSql, [portfolioId], (err, portfolioResult) => {
     if (err) {
-      console.error('PDF 생성용 포트폴리오 조회 오류:', err);
+      console.error('❌ PDF 생성용 포트폴리오 조회 오류:', err);
       return res.status(500).json({ message: '서버 오류' });
     }
-    if (portfolioResult.length === 0)
+    if (portfolioResult.length === 0) {
       return res.status(404).json({ message: '포트폴리오 데이터 없음' });
+    }
 
     const p = portfolioResult[0];
 
-    // 2️⃣ 팀 todos 조회 (전체 목표 + 완료된 일일/주간 업무)
+    // 2️⃣ 팀의 todos 조회
     const todosSql = `
       SELECT 
         title, scope_type, status, scope_start_date, scope_end_date
@@ -2364,9 +2361,9 @@ app.get('/api/miniportfolios/:portfolioId/pdf', async (req, res) => {
       ORDER BY scope_start_date ASC
     `;
 
-    db.query(todosSql, [p.team_id], (err, todos) => {
-      if (err) {
-        console.error('todos 조회 오류:', err);
+    db.query(todosSql, [p.team_id], (err2, todos) => {
+      if (err2) {
+        console.error('❌ todos 조회 오류:', err2);
         return res.status(500).json({ message: '서버 오류' });
       }
 
@@ -2376,7 +2373,7 @@ app.get('/api/miniportfolios/:portfolioId/pdf', async (req, res) => {
         .map(t => `- ${t.title}`)
         .join('\n') || '등록된 전체 목표가 없습니다.';
 
-      // ✅ 완료된 주요 할 일 요약
+      // ✅ 완료된 주요 할 일
       const completedTasks = todos
         .filter(t => t.status === '완료')
         .slice(0, 5)
@@ -2428,11 +2425,18 @@ app.get('/api/miniportfolios/:portfolioId/pdf', async (req, res) => {
 
       doc.end();
 
-      // 4️⃣ 전송
+      // 4️⃣ 파일 다운로드 응답
       stream.on('finish', () => {
         res.download(filePath, `${p.team_name}_포트폴리오.pdf`, err => {
-          if (err) console.error('PDF 전송 오류:', err);
-          fs.unlinkSync(filePath); // 전송 후 임시 파일 삭제
+          if (err) {
+            console.error('❌ PDF 전송 오류:', err);
+          }
+          // 전송 완료 후 파일 삭제
+          try {
+            fs.unlinkSync(filePath);
+          } catch (e) {
+            console.error('⚠️ 임시 PDF 파일 삭제 실패:', e);
+          }
         });
       });
     });
