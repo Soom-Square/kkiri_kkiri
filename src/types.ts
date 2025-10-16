@@ -41,4 +41,7 @@ export type RootStackParamList = {
   TodoScreen: { teamId?: number | null };
   TodoTeamScreen: undefined;
   ActivityGoalsScreen: undefined;
+
+  PortfolioListScreen: undefined;
+  PortfolioScreen: { portfolioId: number };
 };
