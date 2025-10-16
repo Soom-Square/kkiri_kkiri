@@ -18,6 +18,12 @@
   import { useAuth } from '../context/AuthContext';
   import { RootStackParamList } from '../types';
   import { loadWidgetPrefs } from '../utils/widgetPrefs';
+  type ActivityScreenNavigationProp = NativeStackNavigationProp<
+  RootStackParamList,
+  'ActivityScreen' // 이 부분은 네비게이션 Stack에서 이 화면 이름이 뭐로 등록돼 있는지 정확히
+>;
+
+
   import {
     WIDGET_COMPONENTS,
     WidgetPref,
@@ -79,7 +85,7 @@
   export default function ActivityScreen() {
     const { user } = useAuth();
     const currentUserId = user?.id;
-    const navigation = useNavigation<Nav>();
+    const navigation = useNavigation<ActivityScreenNavigationProp>();
 
     const [open, setOpen] = useState(false);
     const [options, setOptions] = useState<ActivityOption[]>([]);
@@ -260,7 +266,7 @@
             <View style={styles.iconRow}>
               <Pressable
   hitSlop={10}
-  onPress={() => navigation.getParent()?.navigate('PortfolioListScreen')}
+  onPress={() => navigation.navigate('PortfolioListScreen')}
 >
   <Image
     source={require('../assets/folder.png')}

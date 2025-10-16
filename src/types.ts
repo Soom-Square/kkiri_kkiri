@@ -32,7 +32,8 @@ export type RootStackParamList = {
     };
   };
   MyPage4: { user: User };
-
+  PortfolioListScreen: undefined;
+  PortfolioScreen: { portfolioId: number };
   // Activity 관련
   ActivityScreen: undefined;
   ActivitySettingScreen: { teamId?: number }; // 여기에 추가
@@ -40,7 +41,4 @@ export type RootStackParamList = {
   TodoScreen: { teamId?: number | null };
   TodoTeamScreen: undefined;
   ActivityGoalsScreen: undefined;
-
-  PortfolioListScreen: undefined;
-  PortfolioScreen: { portfolioId: number }; // 상세 페이지도 나중에 연결할 경우 대비
 };

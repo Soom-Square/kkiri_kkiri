@@ -1,3 +1,5 @@
+// src/screens/Portfolio/PortfolioScreen.tsx
+
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -9,34 +11,46 @@ import {
   Alert,
   Platform,
 } from 'react-native';
-import { useRoute } from '@react-navigation/native';
+import { useRoute, RouteProp } from '@react-navigation/native';
+import type { RootStackParamList } from '../../types';
 
 const API_BASE_URL =
   Platform.OS === 'ios'
     ? 'http://localhost:3000'
     : 'http://10.0.2.2:3000';
 
-const PortfolioScreen = () => {
-  const route = useRoute();
-  const { portfolioId } = route.params as { portfolioId: number };
+type PortfolioScreenRouteProp = RouteProp<RootStackParamList, 'PortfolioScreen'>;
+
+export default function PortfolioScreen() {
+  const route = useRoute<PortfolioScreenRouteProp>();
+  const portfolioId = route.params?.portfolioId;
 
   const [portfolio, setPortfolio] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!portfolioId) {
+      console.error('❌ portfolioId가 없습니다:', route.params);
+      Alert.alert('오류', '포트폴리오 ID가 전달되지 않았습니다.');
+      setLoading(false);
+      return;
+    }
+
+    console.log('✅ portfolioId:', portfolioId);
+
     fetch(`${API_BASE_URL}/api/miniportfolios/${portfolioId}`)
-      .then(async res => {
+      .then(async (res) => {
         if (!res.ok) {
           const text = await res.text();
           throw new Error(`서버 오류 ${res.status}: ${text}`);
         }
         return res.json();
       })
-      .then(data => {
+      .then((data) => {
         setPortfolio(data);
         setLoading(false);
       })
-      .catch(err => {
+      .catch((err) => {
         console.error('🚨 포트폴리오 상세 로드 오류:', err);
         setLoading(false);
         Alert.alert('오류', '서버에서 데이터를 불러올 수 없습니다.');
@@ -86,7 +100,7 @@ const PortfolioScreen = () => {
       </ScrollView>
     </SafeAreaView>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
@@ -97,5 +111,3 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 8, color: '#1F2937' },
   text: { fontSize: 15, color: '#374151', lineHeight: 22 },
 });
-
-export default PortfolioScreen;
