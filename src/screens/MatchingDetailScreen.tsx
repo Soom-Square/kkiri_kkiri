@@ -19,7 +19,6 @@ import { useAuth } from '../context/AuthContext';
 
 const BASE_URL = Platform.OS === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
 
-// 평가 아이콘 (경로는 프로젝트에 맞게 조정)
 const ICON_FROWN = require('../assets/face-frown.png');
 const ICON_HAPPY = require('../assets/face-happy.png');
 const ICON_SMILE = require('../assets/face-smile.png');
@@ -84,19 +83,15 @@ const MatchingDetailScreen = () => {
 
   const fetchDetail = async () => {
     try {
-      // 모집글
       const r = await axios.get(`${BASE_URL}/api/team-recruitments/${route.params.id}`);
       setRecruit(r.data);
 
-      // 작성자 프로필
       const u = await axios.get(`${BASE_URL}/api/user/${r.data.owner_user_id}`);
       setOwner(u.data.user);
 
-      // 신청 목록
       const a = await axios.get(`${BASE_URL}/api/team-recruitments/${route.params.id}/applications`);
       const list: Application[] = a.data || [];
 
-      // 지원자 상세 + 평가 요약
       const enriched = await Promise.all(
         list.map(async (ap: Application) => {
           let applicant = ap.applicant;
@@ -171,11 +166,24 @@ const MatchingDetailScreen = () => {
     }
   };
 
-  // 수락/반려: 서버에서 팀 생성/팀원 추가/상태변경 수행 → 성공 후 최신 상태 재조회
+  // ✅ 개선된 승인/반려 처리 (팀 생성 안내 포함)
   const updateAppStatus = async (application_id: number, status: 'APPROVED' | 'REJECTED') => {
     try {
       setLoading(true);
-      await axios.put(`${BASE_URL}/api/applications/${application_id}/status`, { status });
+      const res = await axios.put(`${BASE_URL}/api/applications/${application_id}/status`, { status });
+
+      if (status === 'APPROVED') {
+        if (res.data.team_id) {
+          Alert.alert('팀 생성 완료', '팀이 생성되었으며 공지사항 게시판이 자동으로 추가되었습니다.');
+        } else if (res.data.message?.includes('팀 생성')) {
+          Alert.alert('팀 생성 완료', '팀이 생성되었으며 공지사항 게시판이 자동으로 추가되었습니다.');
+        } else {
+          Alert.alert('승인 완료', res.data.message || '신청이 승인되었습니다.');
+        }
+      } else {
+        Alert.alert('반려 완료', '신청이 반려되었습니다.');
+      }
+
       await fetchDetail();
     } catch (e) {
       console.error('상태 변경 오류:', e);
@@ -185,7 +193,6 @@ const MatchingDetailScreen = () => {
     }
   };
 
-  // 평가 화면으로 이동
   const goToEvaluation = (user: { id: number; name?: string; department?: string; profile_picture?: string }) => {
     navigation.navigate('Evaluation', { user });
   };
@@ -195,10 +202,8 @@ const MatchingDetailScreen = () => {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={{ paddingBottom: 24, paddingTop: 16 }}>
-        {/* 제목 */}
         <Text style={styles.title}>{recruit.activity_name}</Text>
 
-        {/* 작성자 요약 (프로필/이름 터치 → 평가 페이지) */}
         <View style={styles.metaRow}>
           <TouchableOpacity
             activeOpacity={0.8}
@@ -245,14 +250,12 @@ const MatchingDetailScreen = () => {
 
         <View style={styles.divider} />
 
-        {/* 본문(메모) */}
         {recruit.memo ? (
           <Text style={styles.body}>{recruit.memo}</Text>
         ) : (
           <Text style={styles.body}>상세 설명이 없습니다.</Text>
         )}
 
-        {/* --- 일반 사용자 뷰 --- */}
         {!isOwner && (
           <>
             <View style={styles.inputBox}>
@@ -278,7 +281,6 @@ const MatchingDetailScreen = () => {
           </>
         )}
 
-        {/* --- 작성자 뷰: 신청자 목록 (PENDING만 노출) --- */}
         {isOwner && (
           <View style={{ paddingHorizontal: 16, marginTop: 8 }}>
             {apps.filter(a => a.status === 'PENDING').length === 0 ? (
@@ -290,7 +292,6 @@ const MatchingDetailScreen = () => {
                   const ev = a.evaluations || { review_low: 0, review_medium: 0, review_high: 0 };
                   return (
                     <View key={a.application_id} style={styles.appCard}>
-                      {/* 상단: 이름(터치 → 평가 화면) + 평가 요약 (프로필 이미지 제거) */}
                       <View style={styles.appTopRow}>
                         <TouchableOpacity
                           activeOpacity={0.8}
@@ -359,7 +360,6 @@ const MatchingDetailScreen = () => {
 
 export default MatchingDetailScreen;
 
-/* ---------- helpers & styles ---------- */
 function timeAgo(iso?: string) {
   if (!iso) return '';
   const diff = Date.now() - new Date(iso).getTime();
@@ -374,7 +374,6 @@ function timeAgo(iso?: string) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#fff' },
-
   title: { fontSize: 22, fontWeight: '800', color: '#101828', paddingHorizontal: 16, marginBottom: 12 },
   metaRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16 },
   avatar: { width: 56, height: 56, borderRadius: 28, marginRight: 12, backgroundColor: '#E5E7EB' },
@@ -384,7 +383,6 @@ const styles = StyleSheet.create({
   headcount: { fontSize: 13, color: '#475467', marginTop: 6 },
   divider: { height: 1, backgroundColor: '#E5E7EB', marginVertical: 16, marginHorizontal: 16 },
   body: { color: '#101828', fontSize: 15, paddingHorizontal: 16, lineHeight: 22 },
-
   inputBox: {
     backgroundColor: '#F2F4F7', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12,
     marginHorizontal: 16, marginTop: 20, height: 140,
@@ -395,21 +393,15 @@ const styles = StyleSheet.create({
     borderRadius: 16, paddingVertical: 16, alignItems: 'center',
   },
   primaryBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-
-  // 신청 카드
   appCard: { backgroundColor: '#F3F4F6', borderRadius: 18, padding: 14, marginBottom: 12 },
   appTopRow: { flexDirection: 'row', alignItems: 'center' },
   appTitle: { fontSize: 14, color: '#101828', fontWeight: '800', flex: 1 },
   appSub: { fontSize: 12, color: '#667085', marginTop: 4 },
   appMemo: { marginTop: 8, color: '#101828', fontSize: 14, lineHeight: 20 },
-
-  // 평가 요약
   evalWrap: { flexDirection: 'row', alignItems: 'center' },
   evalItem: { flexDirection: 'row', alignItems: 'center', marginLeft: 10 },
   evalNum: { fontSize: 13, color: '#101828', marginRight: 6, fontWeight: '700' },
   evalIcon: { width: 18, height: 18, resizeMode: 'contain' },
-
-  // 버튼
   appButtons: { flexDirection: 'row', justifyContent: 'center', marginTop: 12, gap: 10 },
   smallBtn: { minWidth: 90, alignItems: 'center', paddingVertical: 8, borderRadius: 12 },
   smallBtnText: { color: '#fff', fontWeight: '700' },

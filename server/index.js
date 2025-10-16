@@ -64,22 +64,47 @@ db.connect((err) => {
 app.post('/register', (req, res) => {
   const { email, password, name, department, student_number, birth } = req.body;
 
-  // 필수값 확인
+  // 🔹 필수값 확인
   if (!email || !password || !name) {
     return res.status(400).json({ message: '필수 항목이 누락되었습니다.' });
   }
 
-  const sql = `INSERT INTO users (email, password, name, department, student_number, birth)
-               VALUES (?, ?, ?, ?, ?, ?)`;
-
-  const values = [email, password, name, department, student_number, birth];
+  // 🔹 users 테이블에 새 사용자 추가
+  const sql = `
+    INSERT INTO users (email, password, name, department, student_number, birth, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
+  `;
+  const values = [email, password, name, department || null, student_number || null, birth || null];
 
   db.query(sql, values, (err, result) => {
     if (err) {
       console.error('회원가입 오류:', err);
       return res.status(500).json({ message: '서버 오류' });
     }
-    return res.status(201).json({ message: '회원가입 성공' });
+
+    const newUserId = result.insertId;
+
+    // 🔹 user_settings 기본값 생성 (모든 알림 ON)
+    const settingsSql = `
+      INSERT INTO user_settings (user_id, notify_team_matching, notify_todos, notify_announcements)
+      VALUES (?, 1, 1, 1)
+    `;
+    db.query(settingsSql, [newUserId], (settingsErr) => {
+      if (settingsErr) {
+        console.error('user_settings 기본값 생성 오류:', settingsErr);
+        // ⚠️ 회원가입은 성공했으나, 세팅 초기화 실패한 경우
+        return res.status(201).json({
+          message: '회원가입은 완료되었지만 알림 설정 초기화에 실패했습니다.',
+          user_id: newUserId,
+        });
+      }
+
+      console.log(`✅ 새 유저 ${newUserId}의 user_settings 기본값 생성 완료`);
+      return res.status(201).json({
+        message: '회원가입 성공',
+        user_id: newUserId,
+      });
+    });
   });
 });
 
@@ -1118,133 +1143,158 @@ app.get('/api/team-recruitments/:id/applications', (req, res) => {
 });
 
 // 신청 생성(팀 지원)
+// ✅ 매칭 지원 시 알림 (활동 탭용)
 app.post('/api/applications', (req, res) => {
   const { recruitment_id, applicant_id, memo, status = 'PENDING' } = req.body;
+
   if (!recruitment_id || !applicant_id) {
     return res.status(400).json({ message: '필수 항목이 누락되었습니다.' });
   }
 
-  const sql = 'INSERT INTO applications (recruitment_id, applicant_id, memo, status) VALUES (?, ?, ?, ?)';
-  db.query(sql, [recruitment_id, applicant_id, memo || null, status], (err, result) => {
+  const insertSql = `
+    INSERT INTO applications (recruitment_id, applicant_id, memo, status)
+    VALUES (?, ?, ?, ?)
+  `;
+
+  db.query(insertSql, [recruitment_id, applicant_id, memo || null, status], (err, result) => {
     if (err) {
       console.error('신청 생성 오류:', err);
       return res.status(500).json({ message: '서버 오류' });
     }
-    res.status(201).json({ message: '신청이 등록되었습니다.', application_id: result.insertId });
+
+    // 모집글 정보 조회
+    const infoSql = `
+      SELECT activity_name, owner_user_id, team_id
+      FROM team_recruitments
+      WHERE recruitment_id = ?
+      LIMIT 1
+    `;
+    db.query(infoSql, [recruitment_id], (infoErr, infoRows) => {
+      if (infoErr || infoRows.length === 0) {
+        console.error('모집글 정보 조회 실패:', infoErr);
+        return res.status(201).json({ message: '신청이 등록되었습니다.' });
+      }
+
+      const { activity_name, owner_user_id, team_id } = infoRows[0];
+      const message = `${activity_name}에 새로운 지원자가 있어요!`;
+
+      // team_id가 없을 수도 있으니 NULL 대신 0으로 처리 (활동 탭 분류 유지)
+      const notiSql = `
+        INSERT INTO notifications (user_id, team_id, message, is_read, created_at)
+        VALUES (?, ?, ?, 0, NOW())
+      `;
+      db.query(notiSql, [owner_user_id, team_id || 0, message], (notiErr) => {
+        if (notiErr) console.error('지원 알림 저장 실패:', notiErr);
+        res.status(201).json({
+          message: '신청이 등록되었습니다.',
+          application_id: result.insertId,
+        });
+      });
+    });
   });
 });
 
-// 신청 상태 변경 (수락/반려)
+
+// ✅ 신청 상태 변경 (수락 시 팀/공지사항 생성)
+// ✅ 수락 / 거절 시 알림 (활동 탭용)
 app.put('/api/applications/:id/status', (req, res) => {
   const { id } = req.params;
-  const { status } = req.body; // 'APPROVED' | 'REJECTED'
-  if (!['APPROVED','REJECTED'].includes(status)) {
+  const { status } = req.body;
+
+  if (!['APPROVED', 'REJECTED'].includes(status))
     return res.status(400).json({ message: 'invalid status' });
-  }
 
-  db.beginTransaction(err => {
-    if (err) {
-      console.error('트랜잭션 시작 오류:', err);
-      return res.status(500).json({ message: 'server error' });
-    }
+  db.beginTransaction((err) => {
+    if (err) return res.status(500).json({ message: '트랜잭션 실패' });
 
-    // 1) 신청/모집글/작성자/현재 팀 정보 조회
+    // 1️⃣ 신청 + 모집글 정보 조회
     const q1 = `
-      SELECT a.application_id, a.recruitment_id, a.applicant_id, a.status AS app_status,
-             tr.team_id, tr.required_members, tr.post_name, tr.activity_name, tr.owner_user_id, tr.status AS recruit_status
+      SELECT a.application_id, a.recruitment_id, a.applicant_id,
+             tr.team_id, tr.owner_user_id, tr.activity_name, tr.required_members
       FROM applications a
-      JOIN team_recruitments tr ON tr.recruitment_id = a.recruitment_id
+      JOIN team_recruitments tr ON a.recruitment_id = tr.recruitment_id
       WHERE a.application_id = ? FOR UPDATE
     `;
     db.query(q1, [id], (err1, rows) => {
-      if (err1) return rollback(err1, res);
-      if (rows.length === 0) return rollback({ message: 'not found' }, res, 404);
+      if (err1 || rows.length === 0) return rollback(err1 || 'not found', res);
       const row = rows[0];
 
-      // 2) 먼저 신청 상태 업데이트
-      const q2 = `UPDATE applications SET status = ? WHERE application_id = ?`;
-      db.query(q2, [status, id], (err2) => {
+      // 2️⃣ 상태 업데이트
+      db.query(`UPDATE applications SET status = ? WHERE application_id = ?`, [status, id], (err2) => {
         if (err2) return rollback(err2, res);
 
+        // 거절 시 알림
         if (status === 'REJECTED') {
-          // 멤버였던 경우 제거(안전장치)
-          if (row.team_id) {
-            const qDel = `DELETE FROM team_members WHERE team_id = ? AND user_id = ?`;
-            db.query(qDel, [row.team_id, row.applicant_id], (errDel) => {
-              if (errDel) return rollback(errDel, res);
-              return commit(res, { message: '반려 처리되었습니다.' });
-            });
-          } else {
-            return commit(res, { message: '반려 처리되었습니다.' });
-          }
+          const msg = `${row.activity_name} 지원이 거절되었습니다.`;
+          db.query(
+            `INSERT INTO notifications (user_id, team_id, message, is_read, created_at)
+             VALUES (?, ?, ?, 0, NOW())`,
+            [row.applicant_id, row.team_id || 0, msg],
+            (notiErr) => {
+              if (notiErr) console.error('거절 알림 실패:', notiErr);
+              commit(res, { message: '반려 완료' });
+            }
+          );
           return;
         }
 
-        // === APPROVED 흐름 ===
-        // 3) 팀이 없으면 생성
+        // 승인 시 처리
         const createTeamIfNotExist = (cb) => {
-          if (row.team_id) return cb(null, row.team_id); // 이미 팀 있음
-          const qCreateTeam = `
+          if (row.team_id) return cb(null, row.team_id);
+
+          const qCreate = `
             INSERT INTO teams (recruitment_id, team_name, leader_user_id, required_members)
             VALUES (?, ?, ?, ?)
           `;
-          db.query(qCreateTeam, [row.recruitment_id, row.activity_name, row.owner_user_id, row.required_members], (errC, result) => {
-            if (errC) return cb(errC);
-            const newTeamId = result.insertId;
-            // 모집글에 team_id 반영
-            db.query(`UPDATE team_recruitments SET team_id = ? WHERE recruitment_id = ?`, [newTeamId, row.recruitment_id], (errU) => {
-              if (errU) return cb(errU);
-              // 팀장 등록(없을 때만)
-              db.query(
-                `INSERT IGNORE INTO team_members (team_id, user_id, role) VALUES (?, ?, 'LEADER')`,
-                [newTeamId, row.owner_user_id],
-                (errL) => (errL ? cb(errL) : cb(null, newTeamId))
-              );
+          db.query(qCreate, [row.recruitment_id, row.activity_name, row.owner_user_id, row.required_members],
+            (errC, resultC) => {
+              if (errC) return cb(errC);
+              const newTeamId = resultC.insertId;
+
+              // 모집글에 team_id 업데이트
+              db.query(`UPDATE team_recruitments SET team_id = ? WHERE recruitment_id = ?`,
+                [newTeamId, row.recruitment_id]);
+              // 팀장 등록
+              db.query(`INSERT IGNORE INTO team_members (team_id, user_id, role)
+                        VALUES (?, ?, 'LEADER')`, [newTeamId, row.owner_user_id]);
+              // 공지 게시판 생성
+              db.query(`INSERT INTO team_boards (team_id, title) VALUES (?, '공지사항')`);
+
+              cb(null, newTeamId);
             });
-          });
         };
 
-        createTeamIfNotExist((errCreate, teamId) => {
-          if (errCreate) return rollback(errCreate, res);
+        // 3️⃣ 승인 시 팀 생성 및 알림
+        createTeamIfNotExist((errT, teamId) => {
+          if (errT) return rollback(errT, res);
 
-          // 4) 신청자 팀원으로 추가(중복 방지)
-          const qAddMember = `INSERT IGNORE INTO team_members (team_id, user_id, role) VALUES (?, ?, 'MEMBER')`;
-          db.query(qAddMember, [teamId, row.applicant_id], (errAdd) => {
-            if (errAdd) return rollback(errAdd, res);
-
-            // 5) 현재 팀원 수 계산(리더 + 승인된 멤버)
-            const qCount = `SELECT COUNT(*) AS cnt FROM team_members WHERE team_id = ?`;
-            db.query(qCount, [teamId], (errCnt, cntRows) => {
-              if (errCnt) return rollback(errCnt, res);
-              const memberCount = cntRows[0].cnt;
-
-              // 정원 다 차면 모집글 종료
-              if (memberCount >= row.required_members) {
-                db.query(`UPDATE team_recruitments SET status = 'CLOSED' WHERE recruitment_id = ?`, [row.recruitment_id], (errClose) => {
-                  if (errClose) return rollback(errClose, res);
-                  return commit(res, { message: '수락 완료. 정원이 찼으므로 모집이 마감되었습니다.', team_id: teamId, memberCount });
-                });
-              } else {
-                return commit(res, { message: '수락 완료. 팀에 합류되었습니다.', team_id: teamId, memberCount });
-              }
-            });
-          });
+          const msg = `${row.activity_name} 팀에 합류되었습니다!`;
+          db.query(
+            `INSERT INTO notifications (user_id, team_id, message, is_read, created_at)
+             VALUES (?, ?, ?, 0, NOW())`,
+            [row.applicant_id, teamId, msg],
+            (notiErr) => {
+              if (notiErr) console.error('승인 알림 실패:', notiErr);
+              commit(res, { message: '승인 완료', team_id: teamId });
+            }
+          );
         });
       });
     });
   });
 
-  function rollback(err, res, code = 500) {
-    console.error('TX ROLLBACK:', err);
-    db.rollback(() => res.status(code).json({ message: 'server error', error: err.message || err }));
+  function rollback(error, res, code = 500) {
+    console.error('트랜잭션 롤백:', error);
+    db.rollback(() => res.status(code).json({ message: '서버 오류' }));
   }
-  function commit(res, payload) {
+
+  function commit(res, data) {
     db.commit((err) => {
       if (err) {
-        console.error('TX COMMIT 오류:', err);
-        return db.rollback(() => res.status(500).json({ message: 'server error' }));
+        console.error('커밋 실패:', err);
+        return db.rollback(() => res.status(500).json({ message: '서버 오류' }));
       }
-      res.json(payload);
+      res.json(data);
     });
   }
 });
@@ -1983,71 +2033,411 @@ app.put('/teams/:teamId/board-title', (req, res) => {
     });
   });
 });
-// ✅ 공지사항 작성 API
+// ✅ 공지사항 작성 API (알림 포함 버전)
 // POST /teams/:teamId/announcements
-app.post('/teams/:teamId/announcements', (req, res) => {
-  const { teamId } = req.params;
-  const { content, author_id } = req.body;
-  
-  console.log(`=== 팀 ${teamId}의 공지사항 작성 요청 ===`);
-  console.log('작성자 ID:', author_id);
-  console.log('내용:', content);
-  
-  if (!content || content.trim() === '') {
-    return res.status(400).json({ 
-      success: false, 
-      message: '내용을 입력해주세요' 
-    });
-  }
-  
-  if (!author_id) {
-    return res.status(400).json({ 
-      success: false, 
-      message: '작성자 정보가 필요합니다' 
-    });
-  }
-  
-  // 1) 먼저 해당 팀의 게시판 ID 조회
-  const getBoardSql = 'SELECT board_id FROM team_boards WHERE team_id = ? LIMIT 1';
-  
-  db.query(getBoardSql, [teamId], (err, boardResults) => {
+// ✅ 일일 todos 알림
+app.post('/cron/daily-todos', (req, res) => {
+  const today = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
+
+  const query = `
+    SELECT t.todo_id, t.team_id, t.title, tm.user_id
+    FROM todos t
+    JOIN team_members tm ON t.team_id = tm.team_id
+    WHERE t.scope_type = '일일' AND DATE(t.due_date) = ?
+  `;
+
+  db.query(query, [today], (err, rows) => {
     if (err) {
-      console.error('게시판 조회 오류:', err);
-      return res.status(500).json({ 
-        success: false, 
-        message: '서버 오류' 
-      });
+      console.error('일일 할 일 조회 오류:', err);
+      return res.status(500).json({ success: false, message: '서버 오류' });
     }
-    
-    if (boardResults.length === 0) {
-      return res.status(404).json({ 
-        success: false, 
-        message: '게시판을 찾을 수 없습니다' 
-      });
+
+    if (rows.length === 0) {
+      console.log('오늘 할 일 없음');
+      return res.json({ success: true, message: '오늘 보낼 알림 없음' });
     }
-    
-    const board_id = boardResults[0].board_id;
-    
-    // 2) 게시글 작성
-    const insertPostSql = `
-      INSERT INTO team_posts (board_id, author_id, content, created_at)
-      VALUES (?, ?, ?, NOW())
+
+    const values = rows.map((r) => [
+      r.user_id,
+      r.team_id,
+      `오늘은 "${r.title}"를 해야해요!`,
+      0,
+      new Date(),
+    ]);
+
+    const insertSql = `
+      INSERT INTO notifications (user_id, team_id, message, is_read, created_at)
+      VALUES ?
     `;
-    
-    db.query(insertPostSql, [board_id, author_id, content.trim()], (insertErr, result) => {
-      if (insertErr) {
-        console.error('게시글 작성 오류:', insertErr);
-        return res.status(500).json({ 
-          success: false, 
-          message: '게시글 작성에 실패했습니다' 
-        });
+
+    db.query(insertSql, [values], (err2) => {
+      if (err2) {
+        console.error('일일 할 일 알림 저장 오류:', err2);
+        return res.status(500).json({ success: false, message: '알림 저장 실패' });
       }
-      
-      console.log(`✅ 게시글 작성 성공 - post_id: ${result.insertId}`);
-      res.json({ 
-        success: true, 
-        message: '공지사항이 작성되었습니다',
-        post_id: result.insertId
+
+      console.log(`✅ ${rows.length}개의 일일 할 일 알림 전송 완료`);
+      res.json({ success: true, sent_count: rows.length });
+    });
+  });
+});
+
+
+// ✅ 알림 목록 조회
+app.get('/notifications/:userId', (req, res) => {
+  const { userId } = req.params;
+
+  const sql = `
+    SELECT 
+      n.notification_id,
+      n.user_id,
+      n.team_id,
+      n.message,
+      n.is_read,
+      n.created_at,
+      t.team_name
+    FROM notifications n
+    LEFT JOIN teams t ON n.team_id = t.team_id
+    WHERE n.user_id = ?
+    ORDER BY n.created_at DESC
+  `;
+
+  db.query(sql, [userId], (err, results) => {
+    if (err) {
+      console.error('알림 조회 오류:', err);
+      return res.status(500).json({ success: false, message: '서버 오류' });
+    }
+
+    res.json({
+      success: true,
+      count: results.length,
+      notifications: results.map((r) => ({
+        id: r.notification_id,
+        team_id: r.team_id,
+        team_name: r.team_name || null,
+        message: r.message,
+        is_read: !!r.is_read,
+        created_at: r.created_at,
+      })),
+    });
+  });
+});
+
+// ✅ 알림 읽음 처리
+app.put('/notifications/:id/read', (req, res) => {
+  const { id } = req.params;
+
+  const sql = `
+    UPDATE notifications
+    SET is_read = 1
+    WHERE notification_id = ?
+  `;
+
+  db.query(sql, [id], (err, result) => {
+    if (err) {
+      console.error('알림 읽음 처리 오류:', err);
+      return res.status(500).json({ success: false, message: '서버 오류' });
+    }
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: '알림을 찾을 수 없습니다.' });
+    }
+
+    res.json({ success: true, message: '알림이 읽음 처리되었습니다.' });
+  });
+});
+
+// ✅ 사용자 알림 설정 조회
+app.get('/api/user-settings/:userId', (req, res) => {
+  const { userId } = req.params;
+  const sql = `
+    SELECT notify_team_matching, notify_todos, notify_announcements
+    FROM user_settings WHERE user_id = ?
+  `;
+  db.query(sql, [userId], (err, rows) => {
+    if (err) return res.status(500).json({ success: false, message: 'DB 오류' });
+    if (rows.length === 0)
+      return res.json({
+        success: true,
+        settings: {
+          teamMatching: true,
+          todos: true,
+          announcements: true,
+        },
+      });
+    res.json({
+      success: true,
+      settings: {
+        teamMatching: !!rows[0].notify_team_matching,
+        todos: !!rows[0].notify_todos,
+        announcements: !!rows[0].notify_announcements,
+      },
+    });
+  });
+});
+
+// ✅ 사용자 알림 설정 변경
+app.patch('/api/user-settings/:userId', (req, res) => {
+  const { userId } = req.params;
+  const { teamMatching, todos, announcements } = req.body;
+
+  const sql = `
+    INSERT INTO user_settings (user_id, notify_team_matching, notify_todos, notify_announcements)
+    VALUES (?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      notify_team_matching = VALUES(notify_team_matching),
+      notify_todos = VALUES(notify_todos),
+      notify_announcements = VALUES(notify_announcements)
+  `;
+
+  db.query(sql, [userId, teamMatching, todos, announcements], (err) => {
+    if (err) return res.status(500).json({ success: false, message: '저장 실패' });
+    res.json({ success: true, message: '설정이 저장되었습니다.' });
+  });
+});
+
+// ✅ 팀 활동 완료 처리 & 미니 포트폴리오 자동 생성
+app.post('/teams/:teamId/complete', (req, res) => {
+  const { teamId } = req.params;
+
+  db.beginTransaction((err) => {
+    if (err) {
+      console.error('트랜잭션 시작 오류:', err);
+      return res.status(500).json({ success: false, message: '서버 오류' });
+    }
+
+    // 1️⃣ 팀 상태를 COMPLETED로 변경
+    const updateTeamSql = `
+      UPDATE teams
+      SET activity_status = 'COMPLETED'
+      WHERE team_id = ?
+    `;
+
+    db.query(updateTeamSql, [teamId], (err1, result1) => {
+      if (err1) {
+        console.error('팀 상태 업데이트 오류:', err1);
+        return rollback(err1, res);
+      }
+
+      console.log(`✅ 팀 ${teamId} 상태 COMPLETED로 변경`);
+
+      // 2️⃣ 기존 미니포트폴리오 삭제 (중복 방지)
+      const deleteOldSql = `
+        DELETE FROM miniportfolios WHERE team_id = ?
+      `;
+      db.query(deleteOldSql, [teamId], (err2) => {
+        if (err2) {
+          console.error('기존 미니포트폴리오 삭제 오류:', err2);
+          return rollback(err2, res);
+        }
+
+        console.log(`🗑 기존 miniportfolios 삭제 완료`);
+
+        // 3️⃣ 새 미니포트폴리오 생성
+        const insertPortfolioSql = `
+          INSERT INTO miniportfolios (user_id, team_id, recruitment_id, role, goals, period, created_at)
+          SELECT 
+              tm.user_id,
+              t.team_id,
+              tr.recruitment_id,
+              tm.part AS role,
+              COALESCE(GROUP_CONCAT(DISTINCT td.title SEPARATOR ', '), '전체 목표 없음') AS goals,
+              CONCAT(DATE_FORMAT(t.created_at, '%Y-%m-%d'), ' ~ ', DATE_FORMAT(t.due_date, '%Y-%m-%d')) AS period,
+              NOW() AS created_at
+          FROM teams t
+          JOIN team_recruitments tr ON t.team_id = tr.team_id
+          JOIN team_members tm ON t.team_id = tm.team_id
+          LEFT JOIN todos td ON t.team_id = td.team_id AND td.scope_type = '전체'
+          WHERE t.team_id = ?
+          GROUP BY tm.user_id, t.team_id, tr.recruitment_id, tm.part, t.created_at, t.due_date
+        `;
+
+        db.query(insertPortfolioSql, [teamId], (err3, result3) => {
+          if (err3) {
+            console.error('미니포트폴리오 생성 오류:', err3);
+            return rollback(err3, res);
+          }
+
+          console.log(`✅ 미니 포트폴리오 자동 생성 완료 (${result3.affectedRows}건)`);
+
+          commit(res, {
+            success: true,
+            message: '팀이 완료 처리되고 미니 포트폴리오가 생성(또는 갱신)되었습니다.',
+            created_portfolios: result3.affectedRows
+          });
+        });
+      });
+    });
+  });
+
+  // --- 트랜잭션 헬퍼 ---
+  function rollback(error, res) {
+    db.rollback(() => {
+      res.status(500).json({ success: false, message: '서버 오류', error });
+    });
+  }
+
+  function commit(res, data) {
+    db.commit((err) => {
+      if (err) {
+        console.error('커밋 오류:', err);
+        return db.rollback(() => res.status(500).json({ success: false, message: '서버 오류' }));
+      }
+      res.json(data);
+    });
+  }
+});
+
+// ✅ 지난 활동 목록 조회
+app.get('/api/miniportfolios/:userId', (req, res) => {
+  const { userId } = req.params;
+
+  const sql = `
+    SELECT 
+      mp.portfolio_id,
+      t.team_name AS title,
+      tr.activity_type AS category,
+      tr.meeting_type,
+      tr.activity_period AS duration,
+      t.activity_status
+    FROM miniportfolios mp
+    JOIN teams t ON mp.team_id = t.team_id
+    JOIN team_recruitments tr ON mp.recruitment_id = tr.recruitment_id
+    WHERE mp.user_id = ?
+    ORDER BY t.created_at DESC
+  `;
+
+  db.query(sql, [userId], (err, result) => {
+    if (err) {
+      console.error('❌ 포트폴리오 목록 조회 오류:', err);
+      return res.status(500).json({ success: false, message: '서버 오류' });
+    }
+    res.json(result);
+  });
+});
+
+// ✅ 포트폴리오 PDF 생성
+app.get('/api/miniportfolios/:portfolioId/pdf', async (req, res) => {
+  const { portfolioId } = req.params;
+
+  // 1️⃣ 포트폴리오 기본 데이터 조회
+  const portfolioSql = `
+    SELECT 
+      mp.portfolio_id,
+      t.team_id,
+      t.team_name,
+      tr.activity_name,
+      tr.activity_type,
+      mp.goals,
+      mp.role,
+      mp.period,
+      GROUP_CONCAT(DISTINCT CONCAT(tm.part, ': ', u.name) SEPARATOR ', ') AS team_roles
+    FROM miniportfolios mp
+    JOIN teams t ON mp.team_id = t.team_id
+    JOIN team_recruitments tr ON mp.recruitment_id = tr.recruitment_id
+    JOIN team_members tm ON t.team_id = tm.team_id
+    JOIN users u ON tm.user_id = u.id
+    WHERE mp.portfolio_id = ?
+    GROUP BY mp.portfolio_id
+  `;
+
+  db.query(portfolioSql, [portfolioId], (err, portfolioResult) => {
+    if (err) {
+      console.error('❌ PDF 생성용 포트폴리오 조회 오류:', err);
+      return res.status(500).json({ message: '서버 오류' });
+    }
+    if (portfolioResult.length === 0) {
+      return res.status(404).json({ message: '포트폴리오 데이터 없음' });
+    }
+
+    const p = portfolioResult[0];
+
+    // 2️⃣ 팀의 todos 조회
+    const todosSql = `
+      SELECT 
+        title, scope_type, status, scope_start_date, scope_end_date
+      FROM todos
+      WHERE team_id = ?
+      ORDER BY scope_start_date ASC
+    `;
+
+    db.query(todosSql, [p.team_id], (err2, todos) => {
+      if (err2) {
+        console.error('❌ todos 조회 오류:', err2);
+        return res.status(500).json({ message: '서버 오류' });
+      }
+
+      // ✅ 전체 목표
+      const overallGoals = todos
+        .filter(t => t.scope_type === '전체')
+        .map(t => `- ${t.title}`)
+        .join('\n') || '등록된 전체 목표가 없습니다.';
+
+      // ✅ 완료된 주요 할 일
+      const completedTasks = todos
+        .filter(t => t.status === '완료')
+        .slice(0, 5)
+        .map(
+          t =>
+            `- ${t.title} (${t.scope_type}, ${t.scope_start_date} ~ ${t.scope_end_date})`
+        )
+        .join('\n') || '완료된 할 일이 없습니다.';
+
+      // 3️⃣ PDF 생성
+      const doc = new PDFKit({ margin: 50 });
+      const filePath = path.join(__dirname, `portfolio_${p.portfolio_id}.pdf`);
+      const stream = fs.createWriteStream(filePath);
+      doc.pipe(stream);
+
+      // Header
+      doc.fontSize(20).text(p.team_name, { align: 'center' });
+      doc.moveDown();
+
+      doc.fontSize(12).text(`활동명: ${p.activity_name}`);
+      doc.text(`유형: ${p.activity_type}`);
+      doc.text(`기간: ${p.period}`);
+      doc.text(`역할: ${p.role}`);
+      doc.moveDown();
+
+      // Goals
+      doc.fontSize(14).text('🎯 활동 목표', { underline: true });
+      doc.fontSize(12).text(p.goals || '등록된 목표 없음');
+      doc.moveDown();
+
+      // Team Roles
+      doc.fontSize(14).text('👥 역할 분담', { underline: true });
+      doc.fontSize(12).text(p.team_roles || '팀 역할 정보 없음');
+      doc.moveDown();
+
+      // Overall Todos
+      doc.fontSize(14).text('📌 전체 목표 (Todos)', { underline: true });
+      doc.fontSize(12).text(overallGoals);
+      doc.moveDown();
+
+      // Completed Task Summary
+      doc.fontSize(14).text('✅ 완료된 주요 업무', { underline: true });
+      doc.fontSize(12).text(completedTasks);
+      doc.moveDown();
+
+      // Footer
+      doc.moveDown(2);
+      doc.text(`생성일: ${new Date().toLocaleDateString()}`, { align: 'right' });
+
+      doc.end();
+
+      // 4️⃣ 파일 다운로드 응답
+      stream.on('finish', () => {
+        res.download(filePath, `${p.team_name}_포트폴리오.pdf`, err => {
+          if (err) {
+            console.error('❌ PDF 전송 오류:', err);
+          }
+          // 전송 완료 후 파일 삭제
+          try {
+            fs.unlinkSync(filePath);
+          } catch (e) {
+            console.error('⚠️ 임시 PDF 파일 삭제 실패:', e);
+          }
+        });
       });
     });
   });

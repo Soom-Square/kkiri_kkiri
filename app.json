@@ -1,4 +1,13 @@
 {
   "name": "ch02_1",
-  "displayName": "ch02_1"
+  "displayName": "ch02_1",
+  "plugins": [
+    "expo-web-browser"
+  ],
+  "android": {
+    "package": "com.anonymous.ch02_1"
+  },
+  "ios": {
+    "bundleIdentifier": "com.anonymous.ch02-1"
+  }
 }

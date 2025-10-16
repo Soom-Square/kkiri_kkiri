@@ -31,6 +31,10 @@ import TodoTeamScreen from './src/screens/TodoTeamScreen';
 import { User } from './src/types';
 import type { RootStackParamList } from './src/types';
 
+import PortfolioListScreen from './src/screens/Portfolio/PortfolioListScreen';
+import PortfolioScreen from './src/screens/Portfolio/PortfolioScreen';
+
+
 const Stack = createStackNavigator();
 
 export default function App() {
@@ -185,6 +189,16 @@ export default function App() {
               headerBackTitle: '',
               headerTitleAlign: 'center',
             }}
+          />
+          <Stack.Screen
+            name="PortfolioListScreen"
+            component={PortfolioListScreen}
+            options={{ title: '미니 포트폴리오 목록' }}
+          />
+          <Stack.Screen
+            name="PortfolioScreen"
+            component={PortfolioScreen}
+            options={{ title: '포트폴리오 상세' }}
           />
         </Stack.Navigator>
       </NavigationContainer>

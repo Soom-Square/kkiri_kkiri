@@ -26,6 +26,16 @@ type Activity = {
 const BASE_URL =
   Platform.OS === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
 
+const getImageUrl = (url?: string | null) => {
+  if (!url) return undefined;
+  if (Platform.OS === 'android') {
+    // Android는 localhost 대신 10.0.2.2로 접근
+    return url.replace('localhost', '10.0.2.2');
+  }
+  return url;
+};
+
+
 const CATEGORIES = ['공모전', '세미나', '워크숍', '튜터링'] as const;
 
 export default function HomeScreen() {
@@ -125,7 +135,8 @@ export default function HomeScreen() {
           contentContainerStyle={{ paddingHorizontal: 20, paddingRight: 8 }}
           renderItem={({ item }) => (
             <TouchableOpacity onPress={() => goDetail(item.activity_id)} activeOpacity={0.85}>
-              <Image source={{ uri: item.main_image_url! }} style={styles.bannerImage} />
+              <Image source={{ uri: getImageUrl(item.main_image_url) }} style={styles.bannerImage} />
+
             </TouchableOpacity>
           )}
         />

@@ -32,16 +32,13 @@ export type RootStackParamList = {
     };
   };
   MyPage4: { user: User };
-
+  PortfolioListScreen: undefined;
+  PortfolioScreen: { portfolioId: number };
   // Activity 관련
   ActivityScreen: undefined;
   ActivitySettingScreen: { teamId?: number }; // 여기에 추가
   NotificationScreen: undefined;
-  MyActivityScreen: undefined;
   TodoScreen: { teamId?: number | null };
   TodoTeamScreen: undefined;
   ActivityGoalsScreen: undefined;
-
-  PortfolioListScreen: undefined;
-  PortfolioScreen: { portfolioId: number };
 };

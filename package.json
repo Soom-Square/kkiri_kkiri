@@ -3,14 +3,13 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "android": "react-native run-android",
-    "ios": "react-native run-ios",
+    
+    
     "lint": "eslint .",
     "start": "react-native start",
     "test": "jest"
   },
   "dependencies": {
-    "@expo/vector-icons": "^14.1.0",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-community/checkbox": "^0.5.20",
     "@react-native-community/datetimepicker": "^8.4.5",
@@ -29,15 +28,20 @@
     "express": "^5.1.0",
     "multer": "^2.0.2",
     "mysql2": "^3.14.1",
+    "pdf-lib": "^1.17.1",
+    "pdfkit": "^0.17.2",
     "react": "19.1.0",
     "react-native": "0.80.1",
+    "react-native-fs": "^2.20.0",
     "react-native-gesture-handler": "^2.27.1",
     "react-native-image-picker": "^8.2.1",
+    "react-native-inappbrowser-reborn": "^3.7.0",
     "react-native-pager-view": "^6.8.1",
     "react-native-picker-select": "^9.3.1",
     "react-native-reanimated": "^3.18.0",
     "react-native-safe-area-context": "^5.5.2",
     "react-native-screens": "^4.11.1",
+    "react-native-share": "^12.2.0",
     "react-native-svg": "^15.13.0",
     "react-native-tab-view": "^4.1.2",
     "react-native-vector-icons": "^10.3.0",
