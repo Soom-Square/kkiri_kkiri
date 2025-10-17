@@ -509,8 +509,8 @@ app.get('/api/user/:id/activities', (req, res) => {
       p.participated_with,
       COALESCE(r.comment, '아직 평가가 없습니다.') as comment
     FROM activitys a
-    INNER JOIN user_activity_participations p ON a.activity_id = p.activity_id
-    LEFT JOIN reviews r ON r.reviewee_id = ? AND r.related_team_id = a.activity_id
+    INNER JOIN user_activity_participations p ON a.team_id = p.team_id
+    LEFT JOIN reviews r ON r.reviewee_id = ? AND r.related_team_id = a.team_id
     WHERE p.user_id = ?
     ORDER BY p.created_at DESC
   `;
@@ -547,7 +547,7 @@ app.get('/api/participations/user/:id', (req, res) => {
     SELECT 
       participation_id, 
       user_id,
-      activity_id, 
+      team_id, 
       participated_at,
       participated_with,
       created_at
@@ -611,12 +611,12 @@ app.get('/api/user/:user_id/teammates', (req, res) => {
   // 사용자가 참여한 활동별로 팀원 정보 조회
   const sql = `
     SELECT 
-      p.activity_id,
+      p.team_id,
       a.title as activity_title,
       p.participated_with,
       p.participated_at
     FROM user_activity_participations p
-    INNER JOIN activitys a ON p.activity_id = a.activity_id
+    INNER JOIN activitys a ON p.team_id = a.team_id
     WHERE p.user_id = ?
     ORDER BY p.created_at DESC
   `;
@@ -652,11 +652,11 @@ app.get('/api/user/:user_id/teammates', (req, res) => {
           // 본인 제외
           const teammateIds = participatedWith.filter(id => Number(id) !== Number(user_id));
           
-          console.log(`활동 ${participation.activity_id}: 팀원 ${teammateIds.length}명`);
+          console.log(`활동 ${participation.team_id}: 팀원 ${teammateIds.length}명`);
           
           if (teammateIds.length > 0) {
             participations.push({
-              activity_id: participation.activity_id,
+              team_id: participation.team_id,
               activity_title: participation.activity_title,
               participated_at: participation.participated_at,
               participated_with: teammateIds
@@ -682,7 +682,7 @@ app.get('/api/participations/debug', (req, res) => {
       a.title as activity_title,
       u.name as user_name
     FROM user_activity_participations p
-    LEFT JOIN activitys a ON p.activity_id = a.activity_id
+    LEFT JOIN activitys a ON p.team_id = a.team_id
     LEFT JOIN users u ON p.user_id = u.id
     ORDER BY p.created_at DESC
   `;
@@ -720,8 +720,8 @@ app.get('/api/reviews/debug', (req, res) => {
 });
 
 // 10. 특정 활동의 참여자 목록 조회
-app.get('/api/activities/:activity_id/participants', (req, res) => {
-  const { activity_id } = req.params;
+app.get('/api/teams/:team_id/participants', (req, res) => {
+  const { team_id } = req.params;
   
   const sql = `
     SELECT 
@@ -731,11 +731,11 @@ app.get('/api/activities/:activity_id/participants', (req, res) => {
       p.participated_at
     FROM user_activity_participations p
     INNER JOIN users u ON p.user_id = u.id
-    WHERE p.activity_id = ?
+    WHERE p.team_id = ?
     ORDER BY p.created_at ASC
   `;
   
-  db.query(sql, [activity_id], (err, results) => {
+  db.query(sql, [team_id], (err, results) => {
     if (err) {
       console.error('활동 참여자 조회 오류:', err);
       return res.status(500).json({ success: false, message: '서버 오류' });
@@ -1382,61 +1382,7 @@ app.get('/my-teams', requireUser, (req, res) => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────
-// 2) GET /todos/:teamId
-//    특정 팀의 "로그인 사용자에게 할당된" 투두만 반환
-//    반환: [{ todo_id, title, status, scope_start_date, scope_end_date, scope_type }]
-// ─────────────────────────────────────────────────────────────
-// GET /todos/:teamId?scope_type=주간&start=2025-09-08&end=2025-09-14
-// app.get('/todos/:teamId', requireUser, (req, res) => {
-//   const userId = req.user.id;
-//   const { teamId } = req.params;
-//   const { scope_type, start, end } = req.query;
 
-//   const params = [teamId, userId];
-//   let where = `team_id = ? AND assigned_user_id = ?`;
-
-//   if (scope_type) {
-//     where += ` AND COALESCE(scope_type,
-//       CASE
-//         WHEN DATEDIFF(scope_end_date, scope_start_date) = 0 THEN '일일'
-//         WHEN DATEDIFF(scope_end_date, scope_start_date) BETWEEN 1 AND 6 THEN '주간'
-//         ELSE '월간'
-//       END
-//     ) = ?`;
-//     params.push(scope_type);
-//   }
-
-//   // 기간이 주어지면 "겹치는 것"을 모두 보여줌
-//   if (start && end) {
-//     where += ` AND NOT (scope_end_date < ? OR scope_start_date > ?)`;
-//     params.push(start, end);
-//   }
-
-//   const sql = `
-//     SELECT
-//       todo_id, title, status, scope_start_date, scope_end_date,
-//       COALESCE(
-//         scope_type,
-//         CASE
-//           WHEN DATEDIFF(scope_end_date, scope_start_date) = 0 THEN '일일'
-//           WHEN DATEDIFF(scope_end_date, scope_start_date) BETWEEN 1 AND 6 THEN '주간'
-//           ELSE '월간'
-//         END
-//       ) AS scope_type
-//     FROM todos
-//     WHERE ${where}
-//     ORDER BY scope_start_date ASC, created_at ASC
-//   `;
-
-//   db.query(sql, params, (err, rows) => {
-//     if (err) return res.status(500).json({ error: 'DB_ERROR' });
-//     res.json(rows);
-//   });
-// });
-// 기존 라우트 교체
-// ===== 팀 단건 조회: GET /teams/:teamId =====
-// 반환 예: { team_id, team_name, due_date: '2025-10-31' | null, ... }
 // GET /teams/:teamId
 app.get('/teams/:teamId', requireUser, (req, res) => {
   const { teamId } = req.params;
@@ -1546,30 +1492,116 @@ app.get('/todos/:teamId', requireUser, (req, res) => {
 app.put('/teams/:teamId/activity-status', requireUser, (req, res) => {
   const { teamId } = req.params;
   const { activity_status } = req.body;
+  const now = new Date();
 
+  // ✅ 유효성 검사
   if (activity_status !== 'COMPLETED') {
-    return res.status(400).json({ error: 'BAD_REQUEST', message: 'activity_status는 COMPLETED만 허용됩니다.' });
+    return res.status(400).json({
+      error: 'BAD_REQUEST',
+      message: 'activity_status는 COMPLETED만 허용됩니다.',
+    });
   }
 
-  // IN_PROGRESS -> COMPLETED 로만 전환
-  const sql = `
+  // ✅ 1️⃣ 팀 상태 업데이트
+  const updateSql = `
     UPDATE teams
     SET activity_status = 'COMPLETED'
     WHERE team_id = ? AND (activity_status IS NULL OR activity_status = 'IN_PROGRESS')
     LIMIT 1
   `;
-  db.query(sql, [teamId], (err, result) => {
+
+  db.query(updateSql, [teamId], (err, result) => {
     if (err) {
       console.error('DB_ERROR(PUT /teams/:teamId/activity-status):', err);
       return res.status(500).json({ error: 'DB_ERROR' });
     }
+
     if (result.affectedRows === 0) {
-      // 이미 COMPLETED이거나 팀 없음
-      return res.json({ success: true, activity_status: 'COMPLETED', note: 'No state change (already completed or not found)' });
+      return res.json({
+        success: true,
+        activity_status: 'COMPLETED',
+        note: 'No state change (already completed or not found)',
+      });
     }
-    return res.json({ success: true, activity_status: 'COMPLETED' });
+
+    // ✅ 2️⃣ 팀 멤버 조회
+    const membersSql = `SELECT user_id FROM team_members WHERE team_id = ?`;
+    db.query(membersSql, [teamId], (err2, members) => {
+      if (err2) {
+        console.error('DB_ERROR(select team_members):', err2);
+        return res.json({
+          success: true,
+          activity_status: 'COMPLETED',
+          note: 'Team updated, but members fetch failed',
+        });
+      }
+
+      if (!members || members.length === 0) {
+        return res.json({
+          success: true,
+          message: '팀 멤버 없음',
+          activity_status: 'COMPLETED',
+        });
+      }
+
+      const userIds = members.map(m => m.user_id);
+      const participatedWithJSON = JSON.stringify(userIds);
+
+      // ✅ 3️⃣ 팀 생성일 조회
+      const teamDateSql = `SELECT DATE(created_at) AS created_at FROM teams WHERE team_id = ?`;
+      db.query(teamDateSql, [teamId], (err3, teamRows) => {
+        if (err3 || !teamRows || teamRows.length === 0) {
+          console.error('DB_ERROR(select teams.created_at):', err3);
+          return res.json({
+            success: true,
+            message: '활동 종료됨 (participation 기록은 생략됨)',
+            activity_status: 'COMPLETED',
+          });
+        }
+
+        const teamCreatedAt = teamRows[0].created_at;
+        const participated_at = `${teamCreatedAt.toISOString().slice(0, 10)}~${now.toISOString().slice(0, 10)}`;
+
+
+        // ✅ 4️⃣ 각 멤버별 participation INSERT
+        const values = userIds.map(user_id => [
+          user_id,
+          teamId,
+          participated_at,
+          participatedWithJSON,
+          now,
+          now,
+        ]);
+
+        const insertSql = `
+          INSERT INTO user_activity_participations
+          (user_id, team_id, participated_at, participated_with, created_at, updated_at)
+          VALUES ?
+        `;
+
+        db.query(insertSql, [values], (err4) => {
+          if (err4) {
+            console.error('DB_ERROR(insert participation):', err4);
+            return res.json({
+              success: true,
+              message: '팀 상태 변경 완료, participation insert 실패',
+              activity_status: 'COMPLETED',
+            });
+          }
+
+          // ✅ 완료
+          return res.json({
+            success: true,
+            activity_status: 'COMPLETED',
+            message: '활동 종료 및 participation 등록 완료',
+          });
+        });
+      });
+    });
   });
 });
+
+
 
 // todo 상태 업데이트
 // 제목/상태 수정 (둘 중 하나만 와도 OK)
@@ -1849,12 +1881,12 @@ app.get('/teams/:teamId/metrics', async (req, res) => {
   const userId = Number(req.header('x-user-id'));
   try {
     // 팀 메타
-    const [[meta]] = await pool.query(
+    const [[meta]] = await db.query(
       `SELECT created_at, due_date FROM teams WHERE team_id=?`, [teamId]
     );
 
     // 전체(scope=전체)
-    const [[overall]] = await pool.query(
+    const [[overall]] = await db.query(
       `SELECT COUNT(*) AS total,
               SUM(CASE WHEN status='완료' THEN 1 ELSE 0 END) AS done
          FROM todos WHERE team_id=? AND scope_type='전체'`,
@@ -1862,7 +1894,7 @@ app.get('/teams/:teamId/metrics', async (req, res) => {
     );
 
     // 월간(내 할당)
-    const [[monthly]] = await pool.query(
+    const [[monthly]] = await db.query(
       `SELECT COUNT(*) AS total,
               SUM(CASE WHEN status='완료' THEN 1 ELSE 0 END) AS done
          FROM todos
@@ -1871,7 +1903,7 @@ app.get('/teams/:teamId/metrics', async (req, res) => {
     );
 
     // 주간(내 할당)
-    const [[weekly]] = await pool.query(
+    const [[weekly]] = await db.query(
       `SELECT COUNT(*) AS total,
               SUM(CASE WHEN status='완료' THEN 1 ELSE 0 END) AS done
          FROM todos
@@ -2442,3 +2474,36 @@ app.get('/api/miniportfolios/:portfolioId/pdf', async (req, res) => {
     });
   });
 });
+
+app.get('/api/miniportfolios/:portfolioId', (req, res) => {
+  const { portfolioId } = req.params;
+
+  const sql = `
+    SELECT 
+      mp.portfolio_id,
+      t.team_id,
+      t.team_name,
+      mp.role,
+      mp.goals,
+      mp.period,
+      GROUP_CONCAT(DISTINCT CONCAT(tm.part, ': ', u.name) SEPARATOR ', ') AS team_roles
+    FROM miniportfolios mp
+    JOIN teams t ON mp.team_id = t.team_id
+    JOIN team_members tm ON t.team_id = tm.team_id
+    JOIN users u ON tm.user_id = u.id
+    WHERE mp.portfolio_id = ?
+    GROUP BY mp.portfolio_id
+  `;
+
+  db.query(sql, [portfolioId], (err, result) => {
+    if (err) {
+      console.error('❌ 미니 포트폴리오 상세 조회 오류:', err);
+      return res.status(500).json({ message: '서버 오류' });
+    }
+    if (result.length === 0)
+      return res.status(404).json({ message: '데이터 없음' });
+
+    res.json(result[0]);
+  });
+});
+
