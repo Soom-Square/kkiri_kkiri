@@ -6,6 +6,15 @@ import axios from 'axios';
 const BASE_URL =
   Platform.OS === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
 
+const getImageUrl = (url?: string | null) => {
+  if (!url) return undefined;
+  if (Platform.OS === 'android') {
+    return url.replace('localhost', '10.0.2.2');
+  }
+  return url;
+};
+
+
 const formatDate = (dateString: string) => {
   const date = new Date(dateString);
   return isNaN(date.getTime()) ? '' : date.toLocaleDateString('ko-KR');
@@ -37,7 +46,7 @@ const ActivityDetailScreen = () => {
       <Text style={styles.title}>{activity.title}</Text>
 
       {activity.main_image_url && (
-        <Image source={{ uri: activity.main_image_url }} style={styles.image} />
+        <Image source={{ uri: getImageUrl(activity.main_image_url) }} style={styles.image} />
       )}
 
       <View style={styles.infoContainer}>

@@ -1,5 +1,6 @@
 package com.ch02_1
 
+import com.ch02_1.BuildConfig
 import android.app.Application
 import com.facebook.react.PackageList
 import com.facebook.react.ReactApplication

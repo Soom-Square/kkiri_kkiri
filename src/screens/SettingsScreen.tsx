@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,12 +11,10 @@ import {
   ActivityIndicator,
   Platform,
 } from 'react-native';
-import { useNavigation, useRoute, RouteProp, CompositeNavigationProp } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { User } from '../types';
 
-import { User } from '../types'; // ✅ 상대 경로 확인
-
-// 네비게이션 파라미터 정의
 type RootStackParamList = {
   Login: undefined;
   Register: undefined;
@@ -27,60 +25,70 @@ type RootStackParamList = {
   TeamFind: undefined;
 };
 
-type SettingsNavigationProp = CompositeNavigationProp<
-  NativeStackNavigationProp<RootStackParamList, 'Settings'>,
-  NativeStackNavigationProp<any>
->;
+type SettingsNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Settings'>;
 type SettingsRouteProp = RouteProp<RootStackParamList, 'Settings'>;
+
 const SettingScreen = () => {
   const route = useRoute<SettingsRouteProp>();
   const navigation = useNavigation<SettingsNavigationProp>();
   const user = route.params?.user;
 
+  const [loading, setLoading] = useState(false);
   const [settings, setSettings] = useState({
     teamMatching: true,
-    activityNotifications: true,
-    activityUpdates: true,
-    publicProfile: true,
+    todos: true,
+    announcements: true,
   });
-
-  const [loading, setLoading] = useState(false);
 
   const API_BASE_URL =
     Platform.OS === 'android'
       ? 'http://10.0.2.2:3000'
       : 'http://localhost:3000';
 
+  // ✅ 1. 설정 불러오기
+  useEffect(() => {
+    if (!user?.id) return;
+    const fetchSettings = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/user-settings/${user.id}`);
+        const data = await res.json();
+        if (data.success && data.settings) {
+          setSettings(data.settings);
+        }
+      } catch (error) {
+        console.error('설정 불러오기 오류:', error);
+      }
+    };
+    fetchSettings();
+  }, [user]);
+
+  // ✅ 2. 설정 변경 처리
+  const toggleSwitch = async (key: keyof typeof settings) => {
+    const newValue = !settings[key];
+    const newSettings = { ...settings, [key]: newValue };
+    setSettings(newSettings);
+
+    try {
+      await fetch(`${API_BASE_URL}/api/user-settings/${user.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newSettings),
+      });
+      console.log(`✅ ${key} 설정이 ${newValue ? '활성화' : '비활성화'}되었습니다`);
+    } catch (error) {
+      console.error('설정 저장 오류:', error);
+      Alert.alert('오류', '설정 저장에 실패했습니다.');
+    }
+  };
+
   const onLogout = () => {
     navigation.replace('Login');
   };
 
-  const onGoBack = () => {
-    navigation.goBack();
-  };
-
-  if (!user) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <Text style={{ padding: 20, color: 'gray' }}>
-          사용자 정보를 불러오는 중입니다...
-        </Text>
-      </SafeAreaView>
-    );
-  }
-
-  const toggleSwitch = (setting: keyof typeof settings) => {
-    setSettings(prev => ({
-      ...prev,
-      [setting]: !prev[setting],
-    }));
-    console.log(`설정 변경: ${setting} = ${!settings[setting]}`);
-  };
-
-  const handleDeleteAccount = () => {
+  const handleDeleteAccount = async () => {
     Alert.alert(
       '회원 탈퇴',
-      '정말로 회원 탈퇴하시겠습니까? 이 작업은 되돌릴 수 없으며 모든 데이터가 삭제됩니다.',
+      '정말로 회원 탈퇴하시겠습니까?',
       [
         { text: '취소', style: 'cancel' },
         { text: '탈퇴', onPress: confirmDeleteAccount, style: 'destructive' },
@@ -91,74 +99,55 @@ const SettingScreen = () => {
   const confirmDeleteAccount = async () => {
     try {
       setLoading(true);
-
-      const response = await fetch(
-        `${API_BASE_URL}/api/delete-user/${user.id}`,
-        {
-          method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-
+      const response = await fetch(`${API_BASE_URL}/api/delete-user/${user.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+      });
       const data = await response.json();
       setLoading(false);
-
       if (data.success) {
         Alert.alert('탈퇴 완료', '회원 탈퇴가 완료되었습니다.', [
-          {
-            text: '확인',
-            onPress: onLogout,
-          },
+          { text: '확인', onPress: onLogout },
         ]);
       } else {
-        Alert.alert('오류', data.message || '회원 탈퇴 처리에 실패했습니다.');
+        Alert.alert('오류', data.message || '회원 탈퇴 처리 실패');
       }
     } catch (error) {
       setLoading(false);
       console.error('회원 탈퇴 에러:', error);
-      Alert.alert('오류', '서버 연결에 실패했습니다.');
+      Alert.alert('오류', '서버 연결 실패');
     }
   };
+
+  if (!user) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <Text style={{ padding: 20, color: 'gray' }}>사용자 정보를 불러오는 중입니다...</Text>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
-      {/* 헤더
-      <View style={styles.header}>
-        <TouchableOpacity onPress={onGoBack} style={styles.backButton}>
-          <Text style={styles.backIcon}>{'<'}</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>설정</Text>
-        <View style={styles.headerRight} />
-      </View> */}
-
-      {/* 계정 섹션 */}
+      {/* 계정 */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>계정</Text>
-
         <View style={styles.itemContainer}>
           <Text style={styles.itemLabel}>아이디</Text>
           <Text style={styles.itemValue}>{user.email}</Text>
         </View>
-
-        <TouchableOpacity style={styles.itemContainer}>
-          <Text style={styles.itemLabel}>비밀번호 변경</Text>
-          <Text style={styles.itemArrow}>{'>'}</Text>
-        </TouchableOpacity>
       </View>
 
-      {/* 알림 섹션 */}
+      {/* 알림 설정 */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>알림</Text>
 
         {[
-          ['팀/팀원 매칭', 'teamMatching'],
-          ['활동 게시글', 'activityNotifications'],
-          ['활동 할 일', 'activityUpdates'],
-          ['공지사항', 'publicProfile'],
+          ['팀/팀원 매칭 알림', 'teamMatching'],
+          ['활동 할 일 알림', 'todos'],
+          ['공지사항 알림', 'announcements'],
         ].map(([label, key]) => (
           <View style={styles.itemContainer} key={key}>
             <Text style={styles.itemLabel}>{label}</Text>
@@ -166,19 +155,16 @@ const SettingScreen = () => {
               trackColor={{ false: '#E5E7EB', true: '#8B5CF6' }}
               thumbColor="#FFFFFF"
               ios_backgroundColor="#E5E7EB"
-              onValueChange={() =>
-                toggleSwitch(key as keyof typeof settings)
-              }
+              onValueChange={() => toggleSwitch(key as keyof typeof settings)}
               value={settings[key as keyof typeof settings]}
             />
           </View>
         ))}
       </View>
 
-      {/* 회원탈퇴 섹션 */}
+      {/* 회원탈퇴 */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>회원탈퇴</Text>
-
         <TouchableOpacity
           style={styles.deleteAccountButton}
           onPress={handleDeleteAccount}
@@ -197,20 +183,6 @@ const SettingScreen = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  backButton: { padding: 10 },
-  backIcon: { fontSize: 24, fontWeight: 'bold' },
-  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#1F2937' },
-  headerRight: { width: 44 },
-
   section: {
     paddingHorizontal: 20,
     paddingVertical: 15,
@@ -231,7 +203,6 @@ const styles = StyleSheet.create({
   },
   itemLabel: { fontSize: 16, color: '#1F2937' },
   itemValue: { fontSize: 16, color: '#9CA3AF' },
-  itemArrow: { fontSize: 16, color: '#9CA3AF' },
   deleteAccountButton: {
     paddingVertical: 15,
     flexDirection: 'row',

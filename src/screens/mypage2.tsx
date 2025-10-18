@@ -1,13 +1,28 @@
+// src/screens/MyPage2.tsx
+
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Alert, ScrollView } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  SafeAreaView,
+  Alert,
+  ScrollView,
+  Platform,
+} from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { Platform } from 'react-native';
 
+// =======================
+// 타입 정의
+// =======================
 const API_BASE_URL =
   Platform.OS === 'android'
-    ? 'http://10.0.2.2:3000'     // Android 에뮬레이터
-    : 'http://localhost:3000';   // iOS 시뮬레이터 (실기기: http://192.168.x.x:3000)
+    ? 'http://10.0.2.2:3000' // Android 에뮬레이터
+    : 'http://localhost:3000'; // iOS 시뮬레이터
+// 실기기(iPhone)에서 테스트 시: const API_BASE_URL = 'http://<Mac IP>:3000';
+
 interface User {
   id: number;
   email: string;
@@ -18,41 +33,21 @@ interface User {
   profile_picture?: string;
 }
 
-// 네비게이션 타입 정의
 type RootStackParamList = {
-  MyPage2: { 
-    user: {
-      id: number;
-      email: string;
-      name: string;
-      department?: string;
-      student_number?: string;
-      birth?: string;
-      profile_picture?: string;
-    };
-  };
-  MyPage3: { 
-    user: {
-      id: number;
-      email: string;
-      name: string;
-      department?: string;
-      student_number?: string;
-      birth?: string;
-      profile_picture?: string;
-    };
-    selectedMember: {
-      id: number;
-      name: string;
-      department: string;
-      activity_id: number;
-      activity_title: string;
-    };
-  };
+  MyPage2: { user: User };
+  MyPage3: { user: User; selectedMember: SelectedMember };
 };
 
 type MyPage2NavigationProp = StackNavigationProp<RootStackParamList, 'MyPage2'>;
 type MyPage2RouteProp = RouteProp<RootStackParamList, 'MyPage2'>;
+
+interface SelectedMember {
+  id: number;
+  name: string;
+  department: string;
+  team_id: number;
+  activity_title: string;
+}
 
 interface TeamMember {
   id: number;
@@ -67,13 +62,34 @@ interface TeamGroup {
   members: TeamMember[];
 }
 
-interface ActivityParticipation {
-  participation_id: number;
-  activity_id: number;
-  activity_title?: string;
-  participated_with: number[];
+// =======================
+// 공용 유틸: 안전한 JSON fetch
+// =======================
+async function fetchJson(url: string, options: RequestInit = {}) {
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      Accept: 'application/json',
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(options.headers || {}),
+    },
+  });
+
+  const ct = res.headers.get('content-type') || '';
+  const text = await res.text();
+
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status} @ ${url}\n${text.slice(0, 200)}`);
+  }
+  if (!ct.includes('application/json')) {
+    throw new Error(`Expected JSON but got "${ct}" @ ${url}\n${text.slice(0, 200)}`);
+  }
+  return JSON.parse(text);
 }
 
+// =======================
+// 스타일
+// =======================
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -162,7 +178,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
   },
-  
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -173,27 +188,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#999',
     textAlign: 'center',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    fontSize: 16,
-    color: '#666',
-  },
-  debugContainer: {
-    backgroundColor: '#f0f0f0',
-    padding: 10,
-    margin: 10,
-    borderRadius: 5,
-    maxHeight: 200,
-  },
-  debugText: {
-    fontSize: 10,
-    color: '#666',
-    lineHeight: 14,
   },
   errorContainer: {
     backgroundColor: '#ffebee',
@@ -210,6 +204,9 @@ const styles = StyleSheet.create({
   },
 });
 
+// =======================
+// 메인 컴포넌트
+// =======================
 const MyPage2: React.FC = () => {
   const navigation = useNavigation<MyPage2NavigationProp>();
   const route = useRoute<MyPage2RouteProp>();
@@ -217,258 +214,144 @@ const MyPage2: React.FC = () => {
 
   const [teamGroups, setTeamGroups] = useState<TeamGroup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [debugInfo, setDebugInfo] = useState<string>('');
   const [error, setError] = useState<string>('');
 
-  // API에서 사용자의 활동 참여 정보 가져오기
-  const fetchUserActivities = async () => {
+  // 참여 정보 조회 + 그룹 구성
+  const fetchUserTeams = async () => {
     try {
       setIsLoading(true);
       setError('');
-      setDebugInfo(`사용자 ID: ${user.id}로 활동 정보 조회 시작`);
-      
-      // 1. 사용자의 참여 정보 가져오기
-      const participationResponse = await fetch(
-        `${API_BASE_URL}/api/participations/user/${user.id}`
-      );
-      
-      if (!participationResponse.ok) {
-        throw new Error(`참여 정보 조회 실패: ${participationResponse.status}`);
-      }
-      
-      const participationData = await participationResponse.json();
-      
-      setDebugInfo(prev => prev + `\n참여 정보 조회 성공: ${participationData.participations?.length || 0}개 활동`);
-      
-      if (!participationData.success || !participationData.participations || participationData.participations.length === 0) {
-        setDebugInfo(prev => prev + '\n참여한 활동이 없습니다.');
+
+      // 1) 참여 정보
+      const partUrl = `${API_BASE_URL}/api/participations/user/${user.id}`;
+      const partJson = await fetchJson(partUrl);
+
+      const participations = Array.isArray(partJson?.participations)
+        ? partJson.participations
+        : Array.isArray(partJson?.data?.participations)
+        ? partJson.data.participations
+        : [];
+
+      if (participations.length === 0) {
         setTeamGroups([]);
         return;
       }
 
       const groups: TeamGroup[] = [];
-      const addedActivities = new Set<number>(); // 중복 방지용
+      const addedTeams = new Set<number>();
 
-      // 2. 각 참여 활동에 대해 처리
-      for (const participation of participationData.participations) {
+      // 2) 팀별 정보
+      for (const p of participations) {
+        const teamId: number = p.team_id;
+        if (!teamId || addedTeams.has(teamId)) continue;
+        addedTeams.add(teamId);
+
+        // 팀 정보 조회: team_name 사용
+        let teamTitle = `활동 ${teamId}`;
         try {
-          // 이미 추가된 활동인지 확인
-          if (addedActivities.has(participation.activity_id)) {
-            setDebugInfo(prev => prev + `\n활동 ${participation.activity_id} 이미 처리됨, 건너뜀`);
-            continue;
-          }
-
-          setDebugInfo(prev => prev + `\n활동 ${participation.activity_id} 처리 중...`);
-          
-          // 활동 정보 가져오기
-          const activityResponse = await fetch(
-            `${API_BASE_URL}/api/activities/${participation.activity_id}`
-          );
-          
-          if (!activityResponse.ok) {
-            setDebugInfo(prev => prev + `\n활동 ${participation.activity_id} 정보 조회 실패`);
-            continue;
-          }
-          
-          const activityData = await activityResponse.json();
-          const activityTitle = activityData.success && activityData.activity ? 
-            activityData.activity.title : `활동 ${participation.activity_id}`;
-          
-          // participated_with에서 본인 제외
-          let participatedWith: number[] = [];
-          
-          try {
-            if (Array.isArray(participation.participated_with)) {
-              participatedWith = participation.participated_with;
-            } else if (typeof participation.participated_with === 'string') {
-              participatedWith = JSON.parse(participation.participated_with);
-            } else {
-              setDebugInfo(prev => prev + `\n활동 ${participation.activity_id}: participated_with 형식 오류`);
-              continue;
-            }
-          } catch (parseError) {
-            setDebugInfo(prev => prev + `\n활동 ${participation.activity_id}: JSON 파싱 오류`);
-            continue;
-          }
-          
-          // 본인 ID를 숫자로 변환하여 제외
-          const memberIds = participatedWith.filter(id => Number(id) !== Number(user.id));
-          
-          setDebugInfo(prev => prev + `\n활동 ${participation.activity_id}: 팀원 ${memberIds.length}명 발견`);
-          
-          if (memberIds.length > 0) {
-            // 멤버 정보 가져오기
-            const membersResponse = await fetch(`${API_BASE_URL}/api/users/batch`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ user_ids: memberIds }),
-            });
-            
-            if (!membersResponse.ok) {
-              setDebugInfo(prev => prev + `\n활동 ${participation.activity_id}: 멤버 정보 조회 실패`);
-              continue;
-            }
-            
-            const membersData = await membersResponse.json();
-            
-             if (membersData.success && membersData.users && Array.isArray(membersData.users)) {
-              // ✅ 수정: 서버에서 이제 id 필드로 직접 반환하므로 member.id 사용
-              const members = membersData.users.map((member: any) => ({
-                id: member.id,  // ✅ member.user_id → member.id로 변경
-                name: member.name || '이름 없음',
-                department: member.department || '소속 미정',
-                selected: false
-            }));
-              console.log('변환된 멤버 데이터:', members);
-
-              if (members.length > 0) {
-                groups.push({
-                  id: participation.activity_id,
-                  title: activityTitle,
-                  members: members
-                });
-                
-                addedActivities.add(participation.activity_id); // 추가된 활동 기록
-                setDebugInfo(prev => prev + `\n활동 "${activityTitle}": ${members.length}명 추가`);
-              }
-            } else {
-              setDebugInfo(prev => prev + `\n활동 ${participation.activity_id}: 멤버 데이터 형식 오류`);
-            }
-          }
-        } catch (activityError) {
-          console.error(`활동 ${participation.activity_id} 처리 중 오류:`, activityError);
-          setDebugInfo(prev => prev + `\n활동 ${participation.activity_id} 오류: ${activityError instanceof Error ? activityError.message : '알 수 없는 오류'}`);
+          const teamJson = await fetchJson(`${API_BASE_URL}/api/teams/${teamId}`);
+          teamTitle =
+            teamJson?.team?.team_name ||
+            teamJson?.team?.title ||
+            teamTitle;
+        } catch {
+          // 타이틀 조회 실패 시 fallback으로 진행
         }
+
+        // 동료 id 목록 파싱
+        let memberIds: number[] = [];
+        if (Array.isArray(p.participated_with)) {
+          memberIds = p.participated_with;
+        } else if (typeof p.participated_with === 'string') {
+          try {
+            memberIds = JSON.parse(p.participated_with);
+          } catch {
+            memberIds = [];
+          }
+        }
+        // 자기 자신 제외
+        memberIds = memberIds.filter((id: number) => id !== user.id);
+
+        if (memberIds.length === 0) {
+          continue;
+        }
+
+        // 멤버 정보 batch
+        const userJson = await fetchJson(`${API_BASE_URL}/api/users/batch`, {
+          method: 'POST',
+          body: JSON.stringify({ user_ids: memberIds }),
+        });
+
+        const userArray =
+          userJson?.users ||
+          userJson?.data?.users ||
+          [];
+
+        if (!Array.isArray(userArray) || userArray.length === 0) {
+          continue;
+        }
+
+        const members: TeamMember[] = userArray.map((m: any) => ({
+          id: m.id ?? m.user_id,
+          name: m.name || '이름 없음',
+          department: m.department || '소속 미정',
+          selected: false,
+        }));
+
+        groups.push({ id: teamId, title: teamTitle, members });
       }
-      
+
       setTeamGroups(groups);
-      setDebugInfo(prev => prev + `\n최종 결과: ${groups.length}개 활동, ${groups.reduce((sum, g) => sum + g.members.length, 0)}명 팀원`);
-      
-    } catch (error) {
-      console.error('활동 정보 가져오기 오류:', error);
-      const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다';
-      setError(errorMessage);
-      setDebugInfo(prev => prev + `\n전체 오류: ${errorMessage}`);
+    } catch (err: any) {
+      console.error('fetchUserTeams 오류:', err);
+      setError(err?.message || '데이터를 불러오는 중 오류 발생');
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    if (user && user.id) {
-      fetchUserActivities();
-    } else {
-      setError('사용자 정보가 올바르지 않습니다');
-      setIsLoading(false);
-    }
-  }, [user.id]);
+    if (user?.id) fetchUserTeams();
+  }, [user?.id]);
 
-const handleMemberSelect = (groupId: number, memberId: number) => {
-  setTeamGroups(prevGroups => {
-    // 먼저 모든 선택을 해제
-    const clearedGroups = prevGroups.map(group => ({
-      ...group,
-      members: group.members.map(member => ({
-        ...member,
-        selected: false
-      }))
-    }));
-    
-    // 그 다음 클릭된 멤버만 선택
-    return clearedGroups.map(group => 
-      group.id === groupId 
-        ? {
-            ...group,
-            members: group.members.map(member => 
-              member.id === memberId 
-                ? { ...member, selected: true } // 클릭된 멤버만 선택
-                : member
-            )
-          }
-        : group
+  // 팀원 선택 / 확인
+  const handleMemberSelect = (groupId: number, memberId: number) => {
+    setTeamGroups(prev =>
+      prev.map(g =>
+        g.id === groupId
+          ? {
+              ...g,
+              members: g.members.map(m => ({
+                ...m,
+                selected: m.id === memberId,
+              })),
+            }
+          : {
+              ...g,
+              members: g.members.map(m => ({ ...m, selected: false })),
+            }
+      )
     );
-  });
-};
+  };
 
   const handleConfirm = () => {
-    console.log('handleConfirm 함수 호출됨');
-    
-    const selectedMembers = teamGroups.flatMap(group => 
-      group.members.filter(member => member.selected).map(member => ({
-        ...member,
-        activity_id: group.id,
-        activity_title: group.title
-      }))
+    const selected = teamGroups.flatMap(g =>
+      g.members
+        .filter(m => m.selected)
+        .map(m => ({
+          ...m,
+          team_id: g.id,
+          activity_title: g.title,
+        }))
     );
-    
-    console.log('선택된 멤버들:', selectedMembers);
-    
-    if (selectedMembers.length > 0) {
-      const selectedMember = selectedMembers[0];
-      console.log('최종 선택된 멤버:', selectedMember);
-      
-      // MyPage3으로 이동
-      navigation.navigate('MyPage3', {
-        user,
-        selectedMember
-      });
-    } else {
-      console.log('선택된 멤버가 없음');
+
+    if (selected.length === 0) {
       Alert.alert('알림', '평가할 팀원을 선택해주세요.');
+      return;
     }
+
+    navigation.navigate('MyPage3', { user, selectedMember: selected[0] });
   };
-
-  const handleRetry = () => {
-    fetchUserActivities();
-  };
-
-  const renderTeamGroup = (group: TeamGroup) => (
-    <View key={group.id} style={styles.groupContainer}>
-      <Text style={styles.groupTitle}>{group.title}</Text>
-      
-      {group.members.map((member) => (
-        <TouchableOpacity
-          key={member.id}
-          style={[
-            styles.memberButton,
-            member.selected && styles.selectedMemberButton
-          ]}
-          onPress={() => handleMemberSelect(group.id, member.id)}
-        >
-          <Text style={[
-            styles.memberText,
-            member.selected && styles.selectedMemberText
-          ]}>
-            {member.department} {member.name}
-          </Text>
-        </TouchableOpacity>
-      ))}
-    </View>
-  );
-
-  if (isLoading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-            <Text style={styles.backIcon}>←</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>팀원평가</Text>
-          <View style={styles.placeholder} />
-        </View>
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>활동 정보를 불러오는 중...</Text>
-        </View>
-        {debugInfo ? (
-          <View style={styles.debugContainer}>
-            <Text style={styles.debugText}>{debugInfo}</Text>
-          </View>
-        ) : null}
-      </SafeAreaView>
-    );
-  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -482,44 +365,70 @@ const handleMemberSelect = (groupId: number, memberId: number) => {
 
       <View style={styles.content}>
         <Text style={styles.subtitle}>평가하실 팀원을 선택해 주세요</Text>
-        
-        {/* 에러 메시지 표시 */}
+
         {error ? (
           <View style={styles.errorContainer}>
             <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity onPress={handleRetry} style={{ marginTop: 10 }}>
+            <TouchableOpacity onPress={fetchUserTeams}>
               <Text style={[styles.errorText, { textDecorationLine: 'underline' }]}>
                 다시 시도
               </Text>
             </TouchableOpacity>
           </View>
         ) : null}
-        
-        <ScrollView 
+
+        <ScrollView
           style={styles.scrollContent}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 100 }} // 확인 버튼 공간 확보
+          contentContainerStyle={{ paddingBottom: 100 }}
         >
-          {teamGroups.length > 0 ? (
-            teamGroups.map(renderTeamGroup)
+          {isLoading ? (
+            <View style={{ paddingVertical: 24 }}>
+              <Text style={{ textAlign: 'center', color: '#666', fontSize: 16 }}>
+                활동 정보를 불러오는 중...
+              </Text>
+            </View>
+          ) : teamGroups.length > 0 ? (
+            teamGroups.map(group => (
+              <View key={group.id} style={styles.groupContainer}>
+                <Text style={styles.groupTitle}>{group.title}</Text>
+
+                {group.members.map(member => (
+                  <TouchableOpacity
+                    key={member.id}
+                    style={[
+                      styles.memberButton,
+                      member.selected && styles.selectedMemberButton,
+                    ]}
+                    onPress={() => handleMemberSelect(group.id, member.id)}
+                  >
+                    <Text
+                      style={[
+                        styles.memberText,
+                        member.selected && styles.selectedMemberText,
+                      ]}
+                    >
+                      {member.department} {member.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ))
           ) : (
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>
-                {error ? '오류가 발생했습니다' : '참여한 활동이 없거나 평가할 팀원이 없습니다.'}
+                참여한 활동이 없거나 평가할 팀원이 없습니다.
               </Text>
             </View>
           )}
         </ScrollView>
       </View>
 
-      {/* 확인 버튼 - 고정 위치 */}
       {teamGroups.length > 0 && (
         <TouchableOpacity style={styles.confirmButton} onPress={handleConfirm}>
           <Text style={styles.confirmButtonText}>확인</Text>
         </TouchableOpacity>
       )}
-
-      
     </SafeAreaView>
   );
 };
