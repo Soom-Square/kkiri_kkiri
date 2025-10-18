@@ -193,12 +193,20 @@ export default function App() {
           <Stack.Screen
             name="PortfolioListScreen"
             component={PortfolioListScreen}
-            options={{ title: '미니 포트폴리오 목록' }}
+            options={{
+              title: '지난 활동',
+              headerBackTitle: '', 
+              headerTitleAlign: 'center',
+             }}
           />
           <Stack.Screen
             name="PortfolioScreen"
             component={PortfolioScreen}
-            options={{ title: '포트폴리오 상세' }}
+            options={{
+               title: '미니 포트폴리오',
+               headerBackTitle: '', 
+               headerTitleAlign: 'center',
+            }} 
           />
         </Stack.Navigator>
       </NavigationContainer>

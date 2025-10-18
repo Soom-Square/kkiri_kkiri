@@ -15,37 +15,65 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types';
+import { useAuth } from '../../context/AuthContext'; // ✅ 사용자 정보
 
 const API_BASE_URL =
   Platform.OS === 'ios' ? 'http://localhost:3000' : 'http://10.0.2.2:3000';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
+type MiniPortfolio = {
+  portfolio_id: number;
+  title: string;          // 서버: t.team_name AS title
+  category?: string;
+  meeting_type?: string;
+  duration?: string;      // 서버: tr.activity_period AS duration
+  activity_status?: string;
+};
+
 export default function PortfolioListScreen() {
-  const [portfolios, setPortfolios] = useState<any[]>([]);
+  const [portfolios, setPortfolios] = useState<MiniPortfolio[]>([]);
   const [loading, setLoading] = useState(true);
   const navigation = useNavigation<NavigationProp>();
+  const { user } = useAuth(); // ✅ 로그인 유저 (예: { id, name, ... })
+  const userId = user?.id;
 
   useEffect(() => {
-    fetch(`${API_BASE_URL}/api/miniportfolios`)
-      .then(async (res) => {
+    if (!userId) {
+      setLoading(false);
+      Alert.alert('로그인이 필요합니다', '포트폴리오를 보려면 로그인하세요.');
+      return;
+    }
+
+    const ac = new AbortController();
+
+    (async () => {
+      try {
+        const res = await fetch(
+          `${API_BASE_URL}/api/miniportfolios/${userId}`,
+          { signal: ac.signal }
+        );
+
         if (!res.ok) {
           const text = await res.text();
           throw new Error(`서버 오류 ${res.status}: ${text}`);
         }
-        return res.json();
-      })
-      .then((data) => {
+
+        const data: MiniPortfolio[] = await res.json();
         console.log('✅ 포트폴리오 목록:', data);
-        setPortfolios(data);
+        setPortfolios(data ?? []);
+      } catch (err) {
+        if ((err as any).name !== 'AbortError') {
+          console.error('🚨 포트폴리오 목록 로드 오류:', err);
+          Alert.alert('오류', '서버에서 데이터를 불러올 수 없습니다.');
+        }
+      } finally {
         setLoading(false);
-      })
-      .catch((err) => {
-        console.error('🚨 포트폴리오 목록 로드 오류:', err);
-        setLoading(false);
-        Alert.alert('오류', '서버에서 데이터를 불러올 수 없습니다.');
-      });
-  }, []);
+      }
+    })();
+
+    return () => ac.abort();
+  }, [userId]);
 
   if (loading) {
     return (
@@ -61,24 +89,27 @@ export default function PortfolioListScreen() {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={{ padding: 20 }}>
         <Text style={styles.heading}>내 포트폴리오</Text>
+
         {portfolios.length === 0 ? (
-          <Text style={{ textAlign: 'center', marginTop: 20, color: '#6B7280' }}>
-            포트폴리오가 없습니다.
-          </Text>
+          <Text style={styles.empty}>포트폴리오가 없습니다.</Text>
         ) : (
           portfolios.map((p) => (
             <Pressable
-              key={p.id}
+              key={p.portfolio_id}
               style={styles.item}
               onPress={() => {
-                console.log('✅ 포트폴리오 클릭:', p.id);
+                console.log('✅ 포트폴리오 클릭:', p.portfolio_id);
                 navigation.navigate('PortfolioScreen', {
-                  portfolioId: p.id,
+                  portfolioId: p.portfolio_id, // ✅ 서버 키에 맞춤
                 });
               }}
             >
-              <Text style={styles.title}>{p.team_name}</Text>
-              <Text style={styles.subtitle}>{p.period}</Text>
+              <Text style={styles.title}>{p.title}</Text>
+              <Text style={styles.subtitle}>
+                {p.duration ?? '기간 정보 없음'}
+                {p.category ? `  |  ${p.category}` : ''}
+                {p.meeting_type ? `  |  ${p.meeting_type}` : ''}
+              </Text>
             </Pressable>
           ))
         )}
@@ -90,11 +121,12 @@ export default function PortfolioListScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   heading: { fontSize: 24, fontWeight: 'bold', marginBottom: 20 },
+  empty: { textAlign: 'center', marginTop: 20, color: '#6B7280' },
   item: {
     padding: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: '#ccc',
+    borderColor: '#E5E7EB',
   },
   title: { fontSize: 18, fontWeight: '600' },
-  subtitle: { fontSize: 14, color: '#6B7280' },
+  subtitle: { fontSize: 14, color: '#6B7280', marginTop: 4 },
 });
