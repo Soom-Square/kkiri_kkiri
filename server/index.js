@@ -11,6 +11,8 @@ const PORT = 3000;
 // Middleware 설정
 app.use(cors());
 app.use(bodyParser.json());
+app.use(express.json());          // ← POST JSON 파싱
+app.use(express.urlencoded({ extended: true }));
 
 const path = require('path');
 
@@ -530,19 +532,13 @@ app.get('/api/user/:id/activities', (req, res) => {
 
 // 5. 사용자의 참여 정보 조회 API (실제 테이블 구조에 맞게 수정)
 app.get('/api/participations/user/:id', (req, res) => {
-  const { id } = req.params;
-  
+  const id = Number(req.params.id);
+
   console.log(`=== 사용자 ${id} 참여 정보 조회 ===`);
-  
-  // user_id 유효성 검사
-  if (!id || id === 'undefined') {
-    return res.status(400).json({ 
-      success: false, 
-      message: '유효한 사용자 ID가 필요합니다' 
-    });
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ success: false, message: '유효한 사용자 ID가 필요합니다' });
   }
-  
-  // 실제 테이블명과 컬럼명 사용
+
   const sql = `
     SELECT 
       participation_id, 
@@ -555,16 +551,12 @@ app.get('/api/participations/user/:id', (req, res) => {
     WHERE user_id = ?
     ORDER BY created_at DESC
   `;
-  
   db.query(sql, [id], (err, results) => {
     if (err) {
       console.error('참여 정보 조회 오류:', err);
       return res.status(500).json({ success: false, message: '서버 오류' });
     }
-    
     console.log(`✅ 참여 정보 조회 결과: ${results.length}개 참여`);
-    console.log('조회된 데이터:', results);
-    
     res.json({ success: true, participations: results });
   });
 });
@@ -572,25 +564,20 @@ app.get('/api/participations/user/:id', (req, res) => {
 // 6. 여러 사용자 정보 일괄 조회 API (수정된 버전 - 핵심 수정사항)
 app.post('/api/users/batch', (req, res) => {
   const { user_ids } = req.body;
-  
   if (!Array.isArray(user_ids) || user_ids.length === 0) {
     return res.status(400).json({ success: false, message: '사용자 ID 배열이 필요합니다' });
   }
-  
   console.log(`=== 일괄 사용자 조회: ${user_ids.length}명 ===`);
-  
+
   const placeholders = user_ids.map(() => '?').join(',');
-  // ✅ 핵심 수정: id as user_id 별칭 제거, 직접 id 반환
   const sql = `SELECT id, name, department FROM users WHERE id IN (${placeholders})`;
-  
+
   db.query(sql, user_ids, (err, results) => {
     if (err) {
       console.error('사용자 일괄 조회 오류:', err);
       return res.status(500).json({ success: false, message: '서버 오류' });
     }
-    
     console.log(`✅ 일괄 조회 결과: ${results.length}명`);
-    console.log('조회된 사용자 데이터:', results); // 디버깅용
     res.json({ success: true, users: results });
   });
 });
@@ -721,8 +708,8 @@ app.get('/api/reviews/debug', (req, res) => {
 
 // 10. 특정 활동의 참여자 목록 조회
 app.get('/api/teams/:team_id/participants', (req, res) => {
-  const { team_id } = req.params;
-  
+  const team_id = Number(req.params.team_id);
+
   const sql = `
     SELECT 
       p.user_id,
@@ -734,14 +721,42 @@ app.get('/api/teams/:team_id/participants', (req, res) => {
     WHERE p.team_id = ?
     ORDER BY p.created_at ASC
   `;
-  
   db.query(sql, [team_id], (err, results) => {
     if (err) {
       console.error('활동 참여자 조회 오류:', err);
       return res.status(500).json({ success: false, message: '서버 오류' });
     }
-    
     res.json({ success: true, participants: results });
+  });
+});
+
+// 팀 기본 정보 조회: /api/teams/:id
+app.get('/api/teams/:id', (req, res) => {
+  const teamId = Number(req.params.id);
+  if (!Number.isFinite(teamId)) {
+    return res.status(400).json({ success: false, message: '유효한 팀 ID가 필요합니다' });
+  }
+
+  const sql = 'SELECT team_id, team_name FROM teams WHERE team_id = ? LIMIT 1';
+  db.query(sql, [teamId], (err, rows) => {
+    if (err) {
+      console.error('팀 조회 오류:', err);
+      return res.status(500).json({ success: false, message: '서버 오류' });
+    }
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ success: false, message: '팀을 찾을 수 없습니다' });
+    }
+    const t = rows[0];
+    // 프론트 호환(기존 title 사용분 대비)
+    return res.json({
+      success: true,
+      team: {
+        id: t.team_id,           // 내부적으로 id로도 쓰일 수 있게
+        team_id: t.team_id,
+        team_name: t.team_name,
+        title: t.team_name,      // 호환용 별칭
+      },
+    });
   });
 });
 
@@ -1199,102 +1214,169 @@ app.post('/api/applications', (req, res) => {
 // ✅ 수락 / 거절 시 알림 (활동 탭용)
 app.put('/api/applications/:id/status', (req, res) => {
   const { id } = req.params;
-  const { status } = req.body;
+  const { status } = req.body; // 'APPROVED' | 'REJECTED'
 
-  if (!['APPROVED', 'REJECTED'].includes(status))
+  if (!['APPROVED', 'REJECTED'].includes(status)) {
     return res.status(400).json({ message: 'invalid status' });
+  }
 
   db.beginTransaction((err) => {
-    if (err) return res.status(500).json({ message: '트랜잭션 실패' });
+    if (err) {
+      console.error('트랜잭션 시작 오류:', err);
+      return res.status(500).json({ message: 'server error' });
+    }
 
-    // 1️⃣ 신청 + 모집글 정보 조회
+    // 1) 신청/모집글/작성자/현재 팀 정보 조회 (락)
     const q1 = `
-      SELECT a.application_id, a.recruitment_id, a.applicant_id,
-             tr.team_id, tr.owner_user_id, tr.activity_name, tr.required_members
+      SELECT a.application_id, a.recruitment_id, a.applicant_id, a.status AS app_status,
+             tr.team_id, tr.required_members, tr.post_name, tr.activity_name,
+             tr.owner_user_id, tr.status AS recruit_status
       FROM applications a
-      JOIN team_recruitments tr ON a.recruitment_id = tr.recruitment_id
+      JOIN team_recruitments tr ON tr.recruitment_id = a.recruitment_id
       WHERE a.application_id = ? FOR UPDATE
     `;
     db.query(q1, [id], (err1, rows) => {
-      if (err1 || rows.length === 0) return rollback(err1 || 'not found', res);
+      if (err1) return rollback(err1, res);
+      if (rows.length === 0) return rollback({ message: 'not found' }, res, 404);
       const row = rows[0];
 
-      // 2️⃣ 상태 업데이트
-      db.query(`UPDATE applications SET status = ? WHERE application_id = ?`, [status, id], (err2) => {
+      // 2) 상태 전이 보호: PENDING에서만 변경 허용
+      const q2 = `UPDATE applications SET status = ? WHERE application_id = ? AND status = 'PENDING'`;
+      db.query(q2, [status, id], (err2, r2) => {
         if (err2) return rollback(err2, res);
+        if (!r2.affectedRows) {
+          return rollback({ message: 'invalid transition' }, res, 409);
+        }
 
-        // 거절 시 알림
         if (status === 'REJECTED') {
-          const msg = `${row.activity_name} 지원이 거절되었습니다.`;
-          db.query(
-            `INSERT INTO notifications (user_id, team_id, message, is_read, created_at)
-             VALUES (?, ?, ?, 0, NOW())`,
-            [row.applicant_id, row.team_id || 0, msg],
-            (notiErr) => {
+          // 반려 흐름: 팀에서 제거(안전장치) + 알림
+          const removeIfMember = (cb) => {
+            if (!row.team_id) return cb(null);
+            const qDel = `DELETE FROM team_members WHERE team_id = ? AND user_id = ?`;
+            db.query(qDel, [row.team_id, row.applicant_id], (errDel) => cb(errDel));
+          };
+
+          removeIfMember((errDel) => {
+            if (errDel) return rollback(errDel, res);
+            const msg = `${row.activity_name} 지원이 거절되었습니다.`;
+            const qNoti = `
+              INSERT INTO notifications (user_id, team_id, message, is_read, created_at)
+              VALUES (?, ?, ?, 0, NOW())
+            `;
+            db.query(qNoti, [row.applicant_id, row.team_id || 0, msg], (notiErr) => {
               if (notiErr) console.error('거절 알림 실패:', notiErr);
-              commit(res, { message: '반려 완료' });
-            }
-          );
+              return commit(res, { message: '반려 처리되었습니다.' });
+            });
+          });
+
           return;
         }
 
-        // 승인 시 처리
+        // === APPROVED 흐름 ===
         const createTeamIfNotExist = (cb) => {
-          if (row.team_id) return cb(null, row.team_id);
+          if (row.team_id) return cb(null, row.team_id); // 이미 팀 있음
 
-          const qCreate = `
+          const qCreateTeam = `
             INSERT INTO teams (recruitment_id, team_name, leader_user_id, required_members)
             VALUES (?, ?, ?, ?)
           `;
-          db.query(qCreate, [row.recruitment_id, row.activity_name, row.owner_user_id, row.required_members],
-            (errC, resultC) => {
-              if (errC) return cb(errC);
-              const newTeamId = resultC.insertId;
-
-              // 모집글에 team_id 업데이트
-              db.query(`UPDATE team_recruitments SET team_id = ? WHERE recruitment_id = ?`,
-                [newTeamId, row.recruitment_id]);
-              // 팀장 등록
-              db.query(`INSERT IGNORE INTO team_members (team_id, user_id, role)
-                        VALUES (?, ?, 'LEADER')`, [newTeamId, row.owner_user_id]);
-              // 공지 게시판 생성
-              db.query(`INSERT INTO team_boards (team_id, title) VALUES (?, '공지사항')`);
-
-              cb(null, newTeamId);
-            });
-        };
-
-        // 3️⃣ 승인 시 팀 생성 및 알림
-        createTeamIfNotExist((errT, teamId) => {
-          if (errT) return rollback(errT, res);
-
-          const msg = `${row.activity_name} 팀에 합류되었습니다!`;
           db.query(
-            `INSERT INTO notifications (user_id, team_id, message, is_read, created_at)
-             VALUES (?, ?, ?, 0, NOW())`,
-            [row.applicant_id, teamId, msg],
-            (notiErr) => {
-              if (notiErr) console.error('승인 알림 실패:', notiErr);
-              commit(res, { message: '승인 완료', team_id: teamId });
+            qCreateTeam,
+            [row.recruitment_id, row.activity_name, row.owner_user_id, row.required_members],
+            (errC, result) => {
+              if (errC) return cb(errC);
+              const newTeamId = result.insertId;
+
+              // 모집글에 team_id 반영
+              const qUpdRecruit = `UPDATE team_recruitments SET team_id = ? WHERE recruitment_id = ?`;
+              db.query(qUpdRecruit, [newTeamId, row.recruitment_id], (errU) => {
+                if (errU) return cb(errU);
+
+                // 팀장 등록(중복 방지)
+                const qLeader = `INSERT IGNORE INTO team_members (team_id, user_id, role) VALUES (?, ?, 'LEADER')`;
+                db.query(qLeader, [newTeamId, row.owner_user_id], (errL) => {
+                  if (errL) return cb(errL);
+
+                  // 공지 게시판 생성
+                  const qBoard = `INSERT INTO team_boards (team_id, title) VALUES (?, '공지사항')`;
+                  db.query(qBoard, [newTeamId], (errB) => {
+                    if (errB) return cb(errB);
+                    return cb(null, newTeamId);
+                  });
+                });
+              });
             }
           );
+        };
+
+        createTeamIfNotExist((errCreate, teamId) => {
+          if (errCreate) return rollback(errCreate, res);
+
+          // 3) 신청자 팀원으로 추가(중복 방지)
+          const qAddMember = `INSERT IGNORE INTO team_members (team_id, user_id, role) VALUES (?, ?, 'MEMBER')`;
+          db.query(qAddMember, [teamId, row.applicant_id], (errAdd) => {
+            if (errAdd) return rollback(errAdd, res);
+
+            // 4) 현재 팀원 수 계산(리더 + 승인된 멤버)
+            const qCount = `SELECT COUNT(*) AS cnt FROM team_members WHERE team_id = ?`;
+            db.query(qCount, [teamId], (errCnt, cntRows) => {
+              if (errCnt) return rollback(errCnt, res);
+              const memberCount = cntRows[0].cnt;
+
+              const afterNoti = (closed) => {
+                const msg = closed
+                  ? `${row.activity_name} 팀에 합류되었습니다! 정원이 충원되어 모집이 마감되었습니다.`
+                  : `${row.activity_name} 팀에 합류되었습니다!`;
+
+                const qNoti = `
+                  INSERT INTO notifications (user_id, team_id, message, is_read, created_at)
+                  VALUES (?, ?, ?, 0, NOW())
+                `;
+                db.query(qNoti, [row.applicant_id, teamId, msg], (notiErr) => {
+                  if (notiErr) console.error('승인 알림 실패:', notiErr);
+                  if (closed) {
+                    return commit(res, {
+                      message: '수락 완료. 정원이 찼으므로 모집이 마감되었습니다.',
+                      team_id: teamId,
+                      memberCount,
+                    });
+                  }
+                  return commit(res, {
+                    message: '수락 완료. 팀에 합류되었습니다.',
+                    team_id: teamId,
+                    memberCount,
+                  });
+                });
+              };
+
+              // 5) 정원 도달 시 모집글 마감
+              if (memberCount >= row.required_members) {
+                const qClose = `UPDATE team_recruitments SET status = 'CLOSED' WHERE recruitment_id = ?`;
+                db.query(qClose, [row.recruitment_id], (errClose) => {
+                  if (errClose) return rollback(errClose, res);
+                  afterNoti(true);
+                });
+              } else {
+                afterNoti(false);
+              }
+            });
+          });
         });
       });
     });
   });
 
-  function rollback(error, res, code = 500) {
-    console.error('트랜잭션 롤백:', error);
-    db.rollback(() => res.status(code).json({ message: '서버 오류' }));
+  function rollback(err, res, code = 500) {
+    console.error('TX ROLLBACK:', err);
+    db.rollback(() => res.status(code).json({ message: 'server error', error: err?.message || err }));
   }
-
-  function commit(res, data) {
+  function commit(res, payload) {
     db.commit((err) => {
       if (err) {
-        console.error('커밋 실패:', err);
-        return db.rollback(() => res.status(500).json({ message: '서버 오류' }));
+        console.error('TX COMMIT 오류:', err);
+        return db.rollback(() => res.status(500).json({ message: 'server error' }));
       }
-      res.json(data);
+      res.json(payload);
     });
   }
 });

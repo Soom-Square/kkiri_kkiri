@@ -2361,7 +2361,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - SocketRocket
     - Yoga
-  - RNReanimated (3.19.0):
+  - RNReanimated (3.19.1):
     - boost
     - DoubleConversion
     - fast_float
@@ -2388,11 +2388,11 @@ PODS:
     - ReactCodegen
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
-    - RNReanimated/reanimated (= 3.19.0)
-    - RNReanimated/worklets (= 3.19.0)
+    - RNReanimated/reanimated (= 3.19.1)
+    - RNReanimated/worklets (= 3.19.1)
     - SocketRocket
     - Yoga
-  - RNReanimated/reanimated (3.19.0):
+  - RNReanimated/reanimated (3.19.1):
     - boost
     - DoubleConversion
     - fast_float
@@ -2419,10 +2419,10 @@ PODS:
     - ReactCodegen
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
-    - RNReanimated/reanimated/apple (= 3.19.0)
+    - RNReanimated/reanimated/apple (= 3.19.1)
     - SocketRocket
     - Yoga
-  - RNReanimated/reanimated/apple (3.19.0):
+  - RNReanimated/reanimated/apple (3.19.1):
     - boost
     - DoubleConversion
     - fast_float
@@ -2451,7 +2451,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - SocketRocket
     - Yoga
-  - RNReanimated/worklets (3.19.0):
+  - RNReanimated/worklets (3.19.1):
     - boost
     - DoubleConversion
     - fast_float
@@ -2478,10 +2478,10 @@ PODS:
     - ReactCodegen
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
-    - RNReanimated/worklets/apple (= 3.19.0)
+    - RNReanimated/worklets/apple (= 3.19.1)
     - SocketRocket
     - Yoga
-  - RNReanimated/worklets/apple (3.19.0):
+  - RNReanimated/worklets/apple (3.19.1):
     - boost
     - DoubleConversion
     - fast_float
@@ -3003,7 +3003,7 @@ SPEC CHECKSUMS:
   RNCCheckbox: 471ebdc33884c084f362615c1ef3507496cc07f1
   RNDateTimePicker: ebbd04fcb00e2eaeafb0561cd51862aa5b9dae80
   RNGestureHandler: cdca641e24d0ab743dcd90a24de4e6259e6aa0de
-  RNReanimated: 88ed7de46e956f5f0d623f070a534f711cf056e5
+  RNReanimated: 03d501a89a2d96ccb601fc9782ab4f7ced3b1ef8
   RNScreens: 75074e642b69b086813a943bdf63da7085fb2166
   RNSVG: 70d577ac284cff74cb37b58da5f1690b0eeed271
   RNVectorIcons: 54df27a2e90ddeb674c7237d76060ec9762d0bc5

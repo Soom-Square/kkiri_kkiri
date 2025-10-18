@@ -1,15 +1,27 @@
+// src/screens/MyPage2.tsx
+
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Alert, ScrollView, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  SafeAreaView,
+  Alert,
+  ScrollView,
+  Platform,
+} from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 
 // =======================
-// 🧩 타입 정의
+// 타입 정의
 // =======================
 const API_BASE_URL =
   Platform.OS === 'android'
-    ? 'http://10.0.2.2:3000'
-    : 'http://localhost:3000';
+    ? 'http://10.0.2.2:3000' // Android 에뮬레이터
+    : 'http://localhost:3000'; // iOS 시뮬레이터
+// 실기기(iPhone)에서 테스트 시: const API_BASE_URL = 'http://<Mac IP>:3000';
 
 interface User {
   id: number;
@@ -51,7 +63,32 @@ interface TeamGroup {
 }
 
 // =======================
-// 🎨 스타일 (유지됨)
+// 공용 유틸: 안전한 JSON fetch
+// =======================
+async function fetchJson(url: string, options: RequestInit = {}) {
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      Accept: 'application/json',
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(options.headers || {}),
+    },
+  });
+
+  const ct = res.headers.get('content-type') || '';
+  const text = await res.text();
+
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status} @ ${url}\n${text.slice(0, 200)}`);
+  }
+  if (!ct.includes('application/json')) {
+    throw new Error(`Expected JSON but got "${ct}" @ ${url}\n${text.slice(0, 200)}`);
+  }
+  return JSON.parse(text);
+}
+
+// =======================
+// 스타일
 // =======================
 const styles = StyleSheet.create({
   container: {
@@ -152,27 +189,6 @@ const styles = StyleSheet.create({
     color: '#999',
     textAlign: 'center',
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    fontSize: 16,
-    color: '#666',
-  },
-  debugContainer: {
-    backgroundColor: '#f0f0f0',
-    padding: 10,
-    margin: 10,
-    borderRadius: 5,
-    maxHeight: 200,
-  },
-  debugText: {
-    fontSize: 10,
-    color: '#666',
-    lineHeight: 14,
-  },
   errorContainer: {
     backgroundColor: '#ffebee',
     padding: 15,
@@ -189,7 +205,7 @@ const styles = StyleSheet.create({
 });
 
 // =======================
-// ⚙️ 메인 컴포넌트
+// 메인 컴포넌트
 // =======================
 const MyPage2: React.FC = () => {
   const navigation = useNavigation<MyPage2NavigationProp>();
@@ -199,26 +215,24 @@ const MyPage2: React.FC = () => {
   const [teamGroups, setTeamGroups] = useState<TeamGroup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string>('');
-  const [debugInfo, setDebugInfo] = useState<string>('');
 
-  const addLog = (msg: string) => setDebugInfo(prev => prev + '\n' + msg);
-
-  // -------------------------------
-  // ✅ 참여 정보 조회 + 그룹 구성
-  // -------------------------------
+  // 참여 정보 조회 + 그룹 구성
   const fetchUserTeams = async () => {
     try {
       setIsLoading(true);
       setError('');
-      setDebugInfo(`👤 사용자 ${user.id} 참여 정보 조회 시작`);
 
-      // 1️⃣ 참여 정보 가져오기
-      const res = await fetch(`${API_BASE_URL}/api/participations/user/${user.id}`);
-      const data = await res.json();
-      console.log('참여정보:', data);
+      // 1) 참여 정보
+      const partUrl = `${API_BASE_URL}/api/participations/user/${user.id}`;
+      const partJson = await fetchJson(partUrl);
 
-      if (!data.success || !Array.isArray(data.participations)) {
-        addLog('❌ 참여 정보 없음');
+      const participations = Array.isArray(partJson?.participations)
+        ? partJson.participations
+        : Array.isArray(partJson?.data?.participations)
+        ? partJson.data.participations
+        : [];
+
+      if (participations.length === 0) {
         setTeamGroups([]);
         return;
       }
@@ -226,27 +240,25 @@ const MyPage2: React.FC = () => {
       const groups: TeamGroup[] = [];
       const addedTeams = new Set<number>();
 
-      // 2️⃣ 팀별 정보 불러오기
-      for (const p of data.participations) {
-        const teamId = p.team_id;
-        if (addedTeams.has(teamId)) continue;
-
-        addLog(`\n▶ 팀 ${teamId} 처리중...`);
+      // 2) 팀별 정보
+      for (const p of participations) {
+        const teamId: number = p.team_id;
+        if (!teamId || addedTeams.has(teamId)) continue;
         addedTeams.add(teamId);
 
-        // 팀 이름 조회
-        const teamRes = await fetch(`${API_BASE_URL}/api/teams/${teamId}`);
-        const teamJson = await teamRes.json();
-        console.log('팀 응답:', teamJson);
+        // 팀 정보 조회: team_name 사용
+        let teamTitle = `활동 ${teamId}`;
+        try {
+          const teamJson = await fetchJson(`${API_BASE_URL}/api/teams/${teamId}`);
+          teamTitle =
+            teamJson?.team?.team_name ||
+            teamJson?.team?.title ||
+            teamTitle;
+        } catch {
+          // 타이틀 조회 실패 시 fallback으로 진행
+        }
 
-        const teamTitle =
-          teamJson?.team?.title ||
-          teamJson?.activity?.title ||
-          teamJson?.data?.team?.title ||
-          teamJson?.data?.activity?.title ||
-          `활동 ${teamId}`;
-
-        // 팀원 목록 파싱
+        // 동료 id 목록 파싱
         let memberIds: number[] = [];
         if (Array.isArray(p.participated_with)) {
           memberIds = p.participated_with;
@@ -257,27 +269,29 @@ const MyPage2: React.FC = () => {
             memberIds = [];
           }
         }
-
-        memberIds = memberIds.filter(id => id !== user.id);
+        // 자기 자신 제외
+        memberIds = memberIds.filter((id: number) => id !== user.id);
 
         if (memberIds.length === 0) {
-          addLog(`팀 ${teamId}: 다른 팀원 없음`);
           continue;
         }
 
-        // 멤버 정보 요청
-        const userRes = await fetch(`${API_BASE_URL}/api/users/batch`, {
+        // 멤버 정보 batch
+        const userJson = await fetchJson(`${API_BASE_URL}/api/users/batch`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ user_ids: memberIds }),
         });
-        const userJson = await userRes.json();
-        console.log('멤버 응답:', userJson);
 
-        const userArray = userJson.users || userJson.data?.users || [];
-        if (!Array.isArray(userArray) || userArray.length === 0) continue;
+        const userArray =
+          userJson?.users ||
+          userJson?.data?.users ||
+          [];
 
-        const members = userArray.map((m: any) => ({
+        if (!Array.isArray(userArray) || userArray.length === 0) {
+          continue;
+        }
+
+        const members: TeamMember[] = userArray.map((m: any) => ({
           id: m.id ?? m.user_id,
           name: m.name || '이름 없음',
           department: m.department || '소속 미정',
@@ -285,29 +299,22 @@ const MyPage2: React.FC = () => {
         }));
 
         groups.push({ id: teamId, title: teamTitle, members });
-        addLog(`✅ 팀 "${teamTitle}" (${members.length}명) 추가 완료`);
       }
 
       setTeamGroups(groups);
-      addLog(`\n📦 총 ${groups.length}개 팀 불러옴`);
-    } catch (err) {
+    } catch (err: any) {
       console.error('fetchUserTeams 오류:', err);
-      setError('데이터를 불러오는 중 오류 발생');
+      setError(err?.message || '데이터를 불러오는 중 오류 발생');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // -------------------------------
-  // ✅ useEffect
-  // -------------------------------
   useEffect(() => {
     if (user?.id) fetchUserTeams();
   }, [user?.id]);
 
-  // -------------------------------
-  // ✅ 팀원 선택 / 확인
-  // -------------------------------
+  // 팀원 선택 / 확인
   const handleMemberSelect = (groupId: number, memberId: number) => {
     setTeamGroups(prev =>
       prev.map(g =>
@@ -329,11 +336,13 @@ const MyPage2: React.FC = () => {
 
   const handleConfirm = () => {
     const selected = teamGroups.flatMap(g =>
-      g.members.filter(m => m.selected).map(m => ({
-        ...m,
-        team_id: g.id,
-        activity_title: g.title,
-      }))
+      g.members
+        .filter(m => m.selected)
+        .map(m => ({
+          ...m,
+          team_id: g.id,
+          activity_title: g.title,
+        }))
     );
 
     if (selected.length === 0) {
@@ -343,31 +352,6 @@ const MyPage2: React.FC = () => {
 
     navigation.navigate('MyPage3', { user, selectedMember: selected[0] });
   };
-
-  // -------------------------------
-  // ✅ UI 렌더링
-  // -------------------------------
-  if (isLoading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-            <Text style={styles.backIcon}>←</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>에뮬 왜 안돼 ㅅㅂ</Text>
-          <View style={styles.placeholder} />
-        </View>
-
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>활동 정보를 불러오는 중...</Text>
-        </View>
-
-        <ScrollView style={styles.debugContainer}>
-          <Text style={styles.debugText}>{debugInfo}</Text>
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -398,7 +382,13 @@ const MyPage2: React.FC = () => {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 100 }}
         >
-          {teamGroups.length > 0 ? (
+          {isLoading ? (
+            <View style={{ paddingVertical: 24 }}>
+              <Text style={{ textAlign: 'center', color: '#666', fontSize: 16 }}>
+                활동 정보를 불러오는 중...
+              </Text>
+            </View>
+          ) : teamGroups.length > 0 ? (
             teamGroups.map(group => (
               <View key={group.id} style={styles.groupContainer}>
                 <Text style={styles.groupTitle}>{group.title}</Text>
