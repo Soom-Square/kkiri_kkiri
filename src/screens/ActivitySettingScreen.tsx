@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, FlatList } from 'react-native';
+import { View, Text, Pressable, StyleSheet, FlatList, Image } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../types';
@@ -35,26 +35,52 @@ export default function ActivitySettingScreen() {
 
   const onSave = async () => {
     await saveWidgetPrefs(prefs, teamId);
-    // 이전 화면이 다시 포커스될 때 로드하도록 하면 충분하지만,
-    // 바로 반영 원하면 파라미터 플래그를 내려보내도 됨.
     // @ts-ignore
     nav.goBack();
   };
 
+  // 보이는 위젯 Row: [이름] [아이콘들]
   const Row = ({ item, idx, canMove }: { item: WidgetPref; idx: number; canMove: boolean }) => (
     <View style={s.row}>
-      <Text style={[s.eye, item.visible ? s.eyeOn : s.eyeOff]} onPress={() => onToggle(item.id)}>
-        {item.visible ? '👁' : '🙈'}
-      </Text>
-      <Text style={s.name}>
-        {label(item.id)}
-      </Text>
-      <View style={{flexDirection:'row'}}>
-        <Pressable disabled={!canMove || idx===0} onPress={() => move(idx, 'up')}   style={({pressed})=>[s.ctrl, (pressed && canMove && idx>0) && {opacity:0.6}]}>
-          <Text>▲</Text>
+      <Text style={s.name} numberOfLines={1}>{label(item.id)}</Text>
+
+      <View style={s.rightGroup}>
+        <Pressable onPress={() => onToggle(item.id)} style={s.eyeBtn} hitSlop={8}>
+          <Image
+            source={
+              item.visible
+                ? require('../assets/eye.png')
+                : require('../assets/eye-off.png')
+            }
+            style={[s.eyeIcon, !item.visible && { opacity: 0.35 }]}
+            resizeMode="contain"
+          />
         </Pressable>
-        <Pressable disabled={!canMove || idx===visible.length-1} onPress={() => move(idx, 'down')} style={({pressed})=>[s.ctrl, (pressed && canMove && idx<visible.length-1) && {opacity:0.6}]}>
-          <Text>▼</Text>
+
+        <Pressable
+          disabled={!canMove || idx === 0}
+          onPress={() => move(idx, 'up')}
+          style={({ pressed }) => [
+            s.ctrl,
+            (!canMove || idx === 0) && s.ctrlDisabled,
+            pressed && canMove && idx > 0 && { opacity: 0.6 },
+          ]}
+          hitSlop={6}
+        >
+          <Text style={s.ctrlText}>∧</Text>
+        </Pressable>
+
+        <Pressable
+          disabled={!canMove || idx === visible.length - 1}
+          onPress={() => move(idx, 'down')}
+          style={({ pressed }) => [
+            s.ctrl,
+            (!canMove || idx === visible.length - 1) && s.ctrlDisabled,
+            pressed && canMove && idx < visible.length - 1 && { opacity: 0.6 },
+          ]}
+          hitSlop={6}
+        >
+          <Text style={s.ctrlText}>∨</Text>
         </Pressable>
       </View>
     </View>
@@ -65,52 +91,95 @@ export default function ActivitySettingScreen() {
       <Text style={s.title}>커스터마이징</Text>
 
       <Text style={s.section}>보이는 위젯</Text>
-      {visible.length === 0 ? <Text style={s.empty}>보이는 항목 없음</Text> :
+      {visible.length === 0 ? (
+        <Text style={s.empty}>보이는 항목 없음</Text>
+      ) : (
         <FlatList
           data={visible}
-          keyExtractor={i=>i.id}
-          renderItem={({item, index}) => <Row item={item} idx={index} canMove />}
+          keyExtractor={(i) => i.id}
+          renderItem={({ item, index }) => <Row item={item} idx={index} canMove />}
           scrollEnabled={false}
         />
-      }
+      )}
 
-      <Text style={[s.section,{marginTop:16}]}>숨김 위젯</Text>
-      {hidden.length === 0 ? <Text style={s.empty}>숨김 항목 없음</Text> :
+      <Text style={[s.section, { marginTop: 16 }]}>숨김 위젯</Text>
+      {hidden.length === 0 ? (
+        <Text style={s.empty}>숨김 항목 없음</Text>
+      ) : (
         <FlatList
           data={hidden}
-          keyExtractor={i=>i.id}
-          renderItem={({item}) =>
+          keyExtractor={(i) => i.id}
+          renderItem={({ item }) => (
             <View style={s.row}>
-              <Text style={[s.eye, s.eyeOff]} onPress={() => onToggle(item.id)}>🙈</Text>
-              <Text style={s.name}>{label(item.id)}</Text>
-              <Pressable onPress={() => onToggle(item.id)} style={s.showBtn}><Text>보이기</Text></Pressable>
+              <Text style={s.name} numberOfLines={1}>{label(item.id)}</Text>
+
+              <View style={s.rightGroup}>
+                <Pressable onPress={() => onToggle(item.id)} style={s.eyeBtn} hitSlop={8}>
+                  <Image
+                    source={require('../assets/eye-off.png')}
+                    style={[s.eyeIcon, { opacity: 0.35 }]}
+                    resizeMode="contain"
+                  />
+                </Pressable>
+                {/* 숨김 리스트에서도 정렬 아이콘은 그대로 표시 (필요 없으면 제거 가능) */}
+                <View style={[s.ctrl, s.ctrlDisabled]}><Text style={s.ctrlText}>∧</Text></View>
+                <View style={[s.ctrl, s.ctrlDisabled]}><Text style={s.ctrlText}>∨</Text></View>
+              </View>
             </View>
-          }
+          )}
           scrollEnabled={false}
         />
-      }
+      )}
 
-      <Pressable onPress={onSave} style={s.saveBtn}><Text style={s.saveTxt}>저장</Text></Pressable>
+      <Pressable onPress={onSave} style={s.saveBtn}>
+        <Text style={s.saveTxt}>저장</Text>
+      </Pressable>
     </View>
   );
 }
 
 const label = (id: WidgetId) =>
   id === 'issue' ? '이슈트래커' :
-  id === 'notice' ? '공지사항' :
-  id === 'calendar' ? '캘린더' : '히트맵';
+  id === 'notice' ? '공지사항' : '히트맵';
 
 const s = StyleSheet.create({
-  wrap: { flex:1, backgroundColor:'#fff', padding:20 },
-  title:{ fontSize:20, fontWeight:'800', marginBottom:10 },
-  section:{ fontSize:14, fontWeight:'700', marginBottom:8 },
-  row: { flexDirection:'row', alignItems:'center', justifyContent:'space-between', paddingVertical:10, borderBottomWidth:StyleSheet.hairlineWidth, borderColor:'#eee' },
-  eye: { width:28, textAlign:'center', fontSize:18 },
-  eyeOn:{ opacity:1 }, eyeOff:{ opacity:0.6 },
-  name:{ flex:1, marginLeft:6, fontSize:15 },
-  ctrl:{ paddingHorizontal:8, paddingVertical:4, marginLeft:4 },
-  empty:{ color:'#9CA3AF' },
-  showBtn:{ paddingHorizontal:10, paddingVertical:6, borderWidth:StyleSheet.hairlineWidth, borderRadius:10 },
-  saveBtn:{ marginTop:24, alignSelf:'flex-end', backgroundColor:'#7A5AF8', paddingHorizontal:16, paddingVertical:10, borderRadius:12 },
-  saveTxt:{ color:'#fff', fontWeight:'700' },
+  wrap: { flex: 1, backgroundColor: '#fff', padding: 20 },
+  title: { fontSize: 20, fontWeight: '800', marginBottom: 10 },
+  section: { fontSize: 14, fontWeight: '700', marginBottom: 8 },
+
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: '#E5E7EB',
+  },
+
+  // 왼쪽은 텍스트만
+  name: { flex: 1, fontSize: 16, fontWeight: '700', color: '#0B1220' },
+
+  // 오른쪽 아이콘 묶음
+  rightGroup: { flexDirection: 'row', alignItems: 'center', marginLeft: 12 },
+
+  // 눈 아이콘
+  eyeBtn: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center', marginRight: 8 },
+  eyeIcon: { width: 22, height: 22 },
+
+  // 정렬 아이콘(∧ ∨)
+  ctrl: { paddingHorizontal: 6, paddingVertical: 4, marginLeft: 6, borderRadius: 8 },
+  ctrlDisabled: { opacity: 0.35 },
+  ctrlText: { fontSize: 18, color: '#0B1220' },
+
+  empty: { color: '#9CA3AF' },
+
+  saveBtn: {
+    marginTop: 24,
+    alignSelf: 'flex-end',
+    backgroundColor: '#7A5AF8',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  saveTxt: { color: '#fff', fontWeight: '700' },
 });

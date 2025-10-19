@@ -367,6 +367,21 @@ export default function ActivityScreen() {
             <Section title="주간 목표" sub={weekLabel()} data={weeklyTodos} />
           </View>
 
+          <View style={styles.addBtnRow}>
+          <Pressable
+            onPress={() =>
+              navigation.navigate('TodoScreen', { teamId: selected?.teamId ?? null })
+            }
+            style={({ pressed }) => [styles.addBtn, pressed && { opacity: 0.8 }]}
+            hitSlop={8}
+          >
+            <Image
+              source={require('../assets/plus-circle.png')}
+              style={styles.addBtnIcon}
+              resizeMode="contain"
+            />
+          </Pressable>
+        </View>
           {/* 위젯 영역: 설정(가시성/순서)에 따라 렌더 */}
           <View style={{ marginTop: 12 }}>
             {widgetPrefs
@@ -385,13 +400,6 @@ export default function ActivityScreen() {
           </View>
         </ScrollView>
 
-        {/* 떠 있는 FAB */}
-        <Pressable
-          style={styles.fab}
-          onPress={() => navigation.navigate('TodoScreen', { teamId: selected?.teamId ?? null })}
-        >
-          <Image source={require('../assets/plus-circle.png')} style={{ width: 56, height: 56 }} />
-        </Pressable>
       </View>
     </SafeAreaView>
   );
@@ -404,7 +412,7 @@ function humanizePart(part: string) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF', paddingHorizontal: 20 },
-  scrollBody: { paddingBottom: 140, backgroundColor: '#FFFFFF' },
+  scrollBody: { paddingBottom: 80, backgroundColor: '#FFFFFF' },
 
   // 공통 헤더
   header: {
@@ -463,16 +471,26 @@ const styles = StyleSheet.create({
   todoText: { fontSize: 16, color: TEXT_MAIN, lineHeight: 24 },
   todoDone: { color: '#9CA3AF', textDecorationLine: 'line-through' },
 
-  // FAB
-  fab: {
-    position: 'absolute',
-    right: 20,
-    bottom: 40,
+  // 주간 목표 아래 우측 정렬 버튼 컨테이너
+  addBtnRow: {
+    marginTop: 12,
+    marginBottom: 8,
+    alignItems: 'center',  // 중앙 정렬
+  },
+  // 버튼 자체(그림만 쓰므로 컨테이너는 얇게)
+  addBtn: {
+    // 필요하면 터치 그림자 추가
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.12,
     shadowRadius: 3,
-    elevation: 5,
+    elevation: 3,
+  },
+
+  // 아이콘 크기 살짝 감소
+  addBtnIcon: {
+    width: 40,   // 기존 56 -> 40 정도로 축소
+    height: 40,
   },
 });
 

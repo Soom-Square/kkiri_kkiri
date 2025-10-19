@@ -14,16 +14,17 @@ import {
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { User } from '../types';
+import type { RootStackParamList } from '../types';
 
-type RootStackParamList = {
-  Login: undefined;
-  Register: undefined;
-  MainTabs: undefined;
-  InfoDetail: undefined;
-  Settings: { user: User };
-  Evaluation: undefined;
-  TeamFind: undefined;
-};
+// type RootStackParamList = {
+//   Login: undefined;
+//   Register: undefined;
+//   MainTabs: undefined;
+//   InfoDetail: undefined;
+//   Settings: { user: User };
+//   Evaluation: undefined;
+//   TeamFind: undefined;
+// };
 
 type SettingsNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Settings'>;
 type SettingsRouteProp = RouteProp<RootStackParamList, 'Settings'>;
@@ -211,6 +212,7 @@ const styles = StyleSheet.create({
   },
   itemLabel: { fontSize: 16, color: '#1F2937' },
   itemValue: { fontSize: 16, color: '#9CA3AF' },
+  itemArrow: { fontSize: 16, color: '#9CA3AF' },
   deleteAccountButton: {
     paddingVertical: 15,
     flexDirection: 'row',

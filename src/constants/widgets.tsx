@@ -5,14 +5,13 @@ import IssueWidget from '../widgets/IssueWidget';
 import NoticeWidget from '../widgets/NoticeWidget';
 import HeatWidget from '../widgets/HeatWidget';
 
-export type WidgetId = 'issue' | 'notice' | 'calendar' | 'heatmap';
+export type WidgetId = 'issue' | 'notice' | 'heatmap';
 export type WidgetPref = { id: WidgetId; visible: boolean; order: number };
 export type WidgetComponentProps = { teamId?: number | null; refreshKey?: number };
 
 export const DEFAULT_WIDGET_PREFS: WidgetPref[] = [
   { id: 'issue', visible: true, order: 10 },
   { id: 'notice', visible: true, order: 20 },
-  { id: 'calendar', visible: false, order: 30 },
   { id: 'heatmap', visible: true, order: 40 }, // ✅ 기본 표시하도록 변경 가능
 ];
 
@@ -30,7 +29,6 @@ export const CalendarWidget = () => <Placeholder title="캘린더" />;
 export const WIDGET_COMPONENTS: Record<WidgetId, React.FC<WidgetComponentProps>> = {
   issue: (props) => <IssueWidget {...props} />,
   notice: (props) => <NoticeWidget {...props} />,
-  calendar: () => <CalendarWidget />,
   heatmap: (props) => <HeatWidget {...props} />,
 };
 
