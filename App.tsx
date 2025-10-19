@@ -27,6 +27,7 @@ import MyPage4 from './src/screens/mypage4';
 import TodoScreen from './src/screens/TodoScreen';
 import TodoTeamScreen from './src/screens/TodoTeamScreen';
 
+import PasswordResetScreen from './src/screens/PasswordResetScreen';
 
 import { User } from './src/types';
 import type { RootStackParamList } from './src/types';
@@ -207,6 +208,15 @@ export default function App() {
                headerBackTitle: '', 
                headerTitleAlign: 'center',
             }} 
+          />
+          <Stack.Screen
+            name="PasswordResetScreen"
+            component={PasswordResetScreen}
+            options={{
+              title: '비밀번호 재설정',
+              headerBackTitle: '',
+              headerTitleAlign: 'center',
+            }}
           />
         </Stack.Navigator>
       </NavigationContainer>

@@ -63,7 +63,7 @@ export default function IssueWidget({ teamId, refreshKey }: Props) {
 
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE_URL}/teams/${teamId}/daily-todos`);
+      const res = await fetch(`${API_BASE_URL}/teams/${teamId}/daily-todos?only_daily=true`);
       if (!res.ok) {
         console.error('❌ 서버 응답 오류:', res.status);
         setItems([]);

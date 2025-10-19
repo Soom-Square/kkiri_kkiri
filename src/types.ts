@@ -34,6 +34,8 @@ export type RootStackParamList = {
   MyPage4: { user: User };
   PortfolioListScreen: undefined;
   PortfolioScreen: { portfolioId: number };
+  PasswordResetScreen: undefined;
+
   // Activity 관련
   ActivityScreen: undefined;
   ActivitySettingScreen: { teamId?: number }; // 여기에 추가
@@ -41,4 +43,12 @@ export type RootStackParamList = {
   TodoScreen: { teamId?: number | null };
   TodoTeamScreen: undefined;
   ActivityGoalsScreen: undefined;
+};
+
+export type BottomTabParamList = {
+  홈: undefined;
+  정보: undefined;
+  활동: undefined;
+  매칭: undefined;
+  마이페이지: undefined;
 };

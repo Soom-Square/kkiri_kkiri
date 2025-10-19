@@ -5,14 +5,14 @@ import colors from '../config/colors';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
 import { Platform } from 'react-native';
-import { useAuth } from '../context/AuthContext'; // ✅ 추가
+import { useAuth } from '../context/AuthContext';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
-  const { setUser } = useAuth(); // ✅ 추가
+  const { setUser } = useAuth(); 
 
   
   const API_URL =
@@ -44,10 +44,6 @@ export default function LoginScreen() {
           {
             text: '확인',
             onPress: () => {
-            //   navigation.reset({
-            //   index: 0,
-            //   routes: [{ name: 'MainTabs', params: { screen: 'MyPage', params: { user: data.user } } }],
-            // });
             navigation.reset({
               index: 0,
               routes: [{ name: 'MainTabs' }],
@@ -88,7 +84,9 @@ export default function LoginScreen() {
         <Text style={styles.buttonText}>로그인</Text>
       </TouchableOpacity>
 
-      <Text style={styles.link}>비밀번호를 잊으셨나요?</Text>
+      <TouchableOpacity onPress={() => navigation.navigate('PasswordResetScreen')}>
+        <Text style={styles.link}>비밀번호를 잊으셨나요?</Text>
+      </TouchableOpacity>
 
       <Text style={styles.signup}>
         계정이 없으신가요?{' '}
