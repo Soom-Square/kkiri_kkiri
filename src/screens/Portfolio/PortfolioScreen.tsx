@@ -51,7 +51,7 @@ export default function PortfolioScreen() {
 
     const ac = new AbortController();
 
-    fetch(`${API_BASE_URL}/api/miniportfolios/id/${portfolioId}`, { signal: ac.signal })
+    fetch(`${API_BASE_URL}/api/miniportfolios/${portfolioId}`, { signal: ac.signal })
       .then(async (res) => {
         if (!res.ok) {
           const text = await res.text();

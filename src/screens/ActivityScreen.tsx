@@ -267,7 +267,7 @@ export default function ActivityScreen() {
           <Pressable hitSlop={10} onPress={() => navigation.navigate('ActivitySettingScreen', { teamId: selected?.teamId ?? undefined })}>
             <Image source={require('../assets/settings-01.png')} style={[styles.headerIcon, { marginLeft: 16 }]} resizeMode="contain" />
           </Pressable>
-          <Pressable hitSlop={10} onPress={() => navigation.navigate('NotificationScreen')}>
+          <Pressable hitSlop={10} onPress={() => navigation.navigate('Notifications')}>
             <Image source={require('../assets/bell.png')} style={[styles.headerIcon, { marginLeft: 16 }]} resizeMode="contain" />
           </Pressable>
         </View>

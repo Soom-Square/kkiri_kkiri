@@ -49,21 +49,23 @@ export default function PortfolioListScreen() {
 
     (async () => {
       try {
-        const res = await fetch(
-          `${API_BASE_URL}/api/miniportfolios/${userId}`,
-          { signal: ac.signal }
-        );
+        const url = `${API_BASE_URL}/api/users/${userId}/miniportfolios`; // ✅ 목록 라우트
+        const res = await fetch(url, { signal: ac.signal });
 
         if (!res.ok) {
+          if (res.status === 404) {
+            // 서버가 비어있을 때 404를 줄 수 있으니 빈 목록 처리
+            setPortfolios([]);
+            return;
+          }
           const text = await res.text();
           throw new Error(`서버 오류 ${res.status}: ${text}`);
         }
 
         const data: MiniPortfolio[] = await res.json();
-        console.log('✅ 포트폴리오 목록:', data);
-        setPortfolios(data ?? []);
-      } catch (err) {
-        if ((err as any).name !== 'AbortError') {
+        setPortfolios(Array.isArray(data) ? data : []);
+      } catch (err: any) {
+        if (err?.name !== 'AbortError') {
           console.error('🚨 포트폴리오 목록 로드 오류:', err);
           Alert.alert('오류', '서버에서 데이터를 불러올 수 없습니다.');
         }
