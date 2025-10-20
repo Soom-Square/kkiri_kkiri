@@ -1430,12 +1430,17 @@ console.log('✅ users.id 필드 변경에 따른 수정이 완료되었습니�
 app.get('/users/:id/teams', async (req, res) => {
   const userId = Number(req.params.id);
   const sql = `
-    SELECT t.team_id AS teamId, t.team_name AS teamName, tm.part AS part
+    SELECT 
+      t.team_id AS teamId, 
+      t.team_name AS teamName, 
+      tm.part AS part
     FROM team_members tm
     JOIN teams t ON t.team_id = tm.team_id
-    WHERE tm.user_id = ? AND t.status = 'ACTIVE'
+    WHERE tm.user_id = ? 
+      AND t.activity_status = 'IN_PROGRESS'
     ORDER BY t.created_at DESC
   `;
+  
   db.query(sql, [userId], (err, rows) => {
     if (err) return res.status(500).json({ message: 'DB error', err });
     res.json(rows);
