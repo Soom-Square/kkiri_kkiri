@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 
 const API_BASE_URL =
   Platform.OS === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
@@ -45,7 +45,8 @@ export default function ActivityGoalsScreen() {
   const navigation = useNavigation<any>();
   const { user } = useAuth();
   const authHeader = user ? { 'x-user-id': String(user.id) } : undefined;
-
+  const route = useRoute<any>();                    
+  const initialTeamId = route.params?.teamId ?? null; 
   useLayoutEffect(() => {
     navigation.setOptions({ title: '활동 설정' });
   }, [navigation]);
@@ -83,6 +84,10 @@ export default function ActivityGoalsScreen() {
     else Alert.alert('', msg);
   };
 
+  // ✅ (선택사항) Todo/Activity 화면과 정렬 일치시키고 싶으면 동일한 sort 사용
+  const sortTeams = (arr: Team[]) =>
+    [...arr].sort((a, b) => a.team_name.localeCompare(b.team_name));
+
   // 팀 목록
   useEffect(() => {
     if (!user) return;
@@ -90,14 +95,23 @@ export default function ActivityGoalsScreen() {
     axios
       .get<Team[]>(`${API_BASE_URL}/my-teams`, { headers: authHeader })
       .then((res) => {
-        const data = res.data ?? [];
+        const data = sortTeams(res.data ?? []);           // ✅ 정렬 통일(선택)
         setTeams(data);
+
+        // ✅ TodoScreen에서 받은 teamId가 있으면 우선 적용
+        if (initialTeamId) {
+          const matched = data.find(t => t.team_id === initialTeamId);
+          if (matched) {
+            setSelected(matched);
+            return;
+          }
+        }
+        // 전달값이 없거나 매칭 실패 시 첫 항목
         if (data.length) setSelected(data[0]);
       })
       .catch(() => notify('팀 목록 불러오기 실패'))
       .finally(() => setLoadingTeams(false));
-  }, [user]);
-
+  }, [user, initialTeamId]); // ✅ initialTeamId 의존성 추가
   // 팀이 바뀌면 팀 공용 목표 + due_date + activity_status 로드
   useEffect(() => {
     if (!user || !selected) return;

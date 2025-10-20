@@ -42,7 +42,7 @@ export type RootStackParamList = {
   NotificationScreen: undefined;
   TodoScreen: { teamId?: number | null };
   TodoTeamScreen: undefined;
-  ActivityGoalsScreen: undefined;
+  ActivityGoalsScreen: { teamId?: number | null } | undefined;
 };
 
 export type BottomTabParamList = {

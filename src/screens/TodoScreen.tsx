@@ -478,7 +478,10 @@ useEffect(() => {
     navigation.setOptions({
       headerRight: () => (
         <TouchableOpacity
-          onPress={() => navigation.navigate('ActivityGoalsScreen')}
+          // ✅ 선택된 팀을 함께 전달
+          onPress={() => navigation.navigate('ActivityGoalsScreen', {
+            teamId: selected?.team_id ?? null,
+          })}
           style={{ marginRight: 12 }}
         >
           <Image
@@ -489,7 +492,8 @@ useEffect(() => {
         </TouchableOpacity>
       ),
     });
-  }, [navigation]);
+  // ✅ 선택한 팀이 바뀌면 헤더 버튼도 최신값을 들고가도록
+  }, [navigation, selected?.team_id]);
   // 섹션 렌더
   const renderSection = (scope: Scope) => {
     const p = periodOf(scope, viewDate[scope]);
