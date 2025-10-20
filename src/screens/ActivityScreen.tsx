@@ -363,7 +363,7 @@ export default function ActivityScreen() {
             <Section title="월간 목표" sub={monthLabel()} data={monthlyTodos} />
           </View>
 
-          <View style={{ marginTop: 24, paddingBottom: 120 }}>
+          <View style={{ marginTop: 24 }}>
             <Section title="주간 목표" sub={weekLabel()} data={weeklyTodos} />
           </View>
 
@@ -473,9 +473,9 @@ const styles = StyleSheet.create({
 
   // 주간 목표 아래 우측 정렬 버튼 컨테이너
   addBtnRow: {
-    marginTop: 12,
+    marginTop: 8,                            // 살짝만 여백
     marginBottom: 8,
-    alignItems: 'center',  // 중앙 정렬
+    alignItems: 'center',
   },
   // 버튼 자체(그림만 쓰므로 컨테이너는 얇게)
   addBtn: {
