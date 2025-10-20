@@ -2280,6 +2280,87 @@ app.put('/teams/:teamId/board-title', (req, res) => {
 });
 // ✅ 공지사항 작성 API (알림 포함 버전)
 // POST /teams/:teamId/announcements
+
+/**
+ * ✅ POST /teams/:teamId/announcements
+ * body: { content: string, author_id: number }
+ * return: { success: true, post: {...} }
+ */
+app.post('/teams/:teamId/announcements', (req, res) => {
+  const { teamId } = req.params;
+  const { content, author_id } = req.body;
+
+  if (!content || !content.trim()) {
+    return res.status(400).json({ success: false, message: '내용이 비어있습니다' });
+  }
+  if (!author_id) {
+    return res.status(401).json({ success: false, message: '작성자 정보가 없습니다' });
+  }
+
+  // 1) 팀의 board_id 조회 (없으면 생성)
+  const qFindBoard = `SELECT board_id FROM team_boards WHERE team_id = ? LIMIT 1`;
+  db.query(qFindBoard, [teamId], (err1, rows1) => {
+    if (err1) {
+      console.error('board 조회 오류:', err1);
+      return res.status(500).json({ success: false, message: '서버 오류' });
+    }
+
+    const ensureInsertPost = (boardId) => {
+      const qInsertPost = `
+        INSERT INTO team_posts (board_id, author_id, content, created_at)
+        VALUES (?, ?, ?, NOW())
+      `;
+      db.query(qInsertPost, [boardId, author_id, content.trim()], (err2, result2) => {
+        if (err2) {
+          console.error('게시글 작성 오류:', err2);
+          return res.status(500).json({ success: false, message: '서버 오류' });
+        }
+
+        const post_id = result2.insertId;
+        // 클라이언트에서 바로 렌더링할 수 있게 작성자명 포함해 반환
+        const qSelect = `
+          SELECT 
+            tb.board_id,
+            tb.title AS board_title,
+            tp.post_id,
+            tp.content,
+            tp.created_at,
+            u.name AS author_name
+          FROM team_boards tb
+          JOIN team_posts tp ON tb.board_id = tp.board_id
+          JOIN users u ON tp.author_id = u.id
+          WHERE tp.post_id = ?
+          LIMIT 1
+        `;
+        db.query(qSelect, [post_id], (err3, rows3) => {
+          if (err3 || rows3.length === 0) {
+            if (err3) console.error('작성 후 조회 오류:', err3);
+            return res.json({ success: true, post_id });
+          }
+          res.json({ success: true, post: rows3[0] });
+        });
+      });
+    };
+
+    if (rows1.length > 0) {
+      ensureInsertPost(rows1[0].board_id);
+    } else {
+      // 게시판 없으면 생성 후 글 등록
+      const qCreateBoard = `
+        INSERT INTO team_boards (team_id, title, created_at)
+        VALUES (?, '공지사항', NOW())
+      `;
+      db.query(qCreateBoard, [teamId], (errCreate, resultCreate) => {
+        if (errCreate) {
+          console.error('게시판 생성 오류:', errCreate);
+          return res.status(500).json({ success: false, message: '서버 오류' });
+        }
+        ensureInsertPost(resultCreate.insertId);
+      });
+    }
+  });
+});
+
 // ✅ 일일 todos 알림
 app.post('/cron/daily-todos', (req, res) => {
   const today = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
