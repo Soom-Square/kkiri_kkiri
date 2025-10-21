@@ -21,7 +21,7 @@ const BASE_URL =
     ? 'http://10.0.2.2:3000'
     : 'http://localhost:3000';
 
-const categories = ['공모전', '세미나', '워크숍', '특강', '튜터링', '다드림'];
+const categories = ['공모전', '세미나', '워크숍', '특강', '튜터링', '멘토링'];
 
 const formatDate = (dateString: string) => {
   const date = new Date(dateString);

@@ -99,7 +99,7 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 24, justifyContent: 'center', flex: 1 },
+  container: { padding: 24, justifyContent: 'center', flex: 1, backgroundColor: 'white', },
   logo: {
     fontSize: 32,
     fontWeight: 'bold',

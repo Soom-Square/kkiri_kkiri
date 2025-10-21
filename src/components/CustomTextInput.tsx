@@ -46,7 +46,11 @@ export default function CustomTextInput({
       inputRange: [0, 1],
       outputRange: [16, 13],
     }),
-    color: error ? '#EF4444' : colors.inputText,
+    color: error
+      ? '#EF4444'
+      : isFocused
+      ? colors.inputText
+      : colors.inputPlaceholder, // 포커스 전엔 placeholder 톤
   };
 
   return (
@@ -58,8 +62,8 @@ export default function CustomTextInput({
             borderColor: error
               ? '#EF4444'
               : isFocused
-              ? colors.inputText
-              : 'transparent',
+              ? '#000000' // ✅ 포커스 시 검정색 테두리
+              : colors.inputBorder, // 기본 옅은 회색
           },
         ]}
       >
@@ -71,6 +75,7 @@ export default function CustomTextInput({
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
           secureTextEntry={secureTextEntry}
+          placeholderTextColor={colors.inputPlaceholder}
           {...rest}
         />
       </View>
@@ -81,9 +86,9 @@ export default function CustomTextInput({
 
 const styles = StyleSheet.create({
   inputContainer: {
-    backgroundColor: colors.inputBackground,
+    backgroundColor: '#F9FAFB', 
     borderRadius: 12,
-    borderWidth: 1.5,
+    borderWidth: 1, // 기본도 살짝 보이게
     paddingTop: 26,
     paddingBottom: 8,
     paddingHorizontal: 12,
@@ -92,7 +97,7 @@ const styles = StyleSheet.create({
   },
   input: {
     fontSize: 16,
-    color: colors.inputText,
+    color: colors.inputText || '#101828',
     padding: 0,
     height: 24,
   },

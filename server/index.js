@@ -2830,6 +2830,7 @@ app.get('/api/miniportfolios/:portfolioId/pdf', async (req, res) => {
   });
 });
 
+// ✅ 수정된 /api/miniportfolios/:portfolioId
 app.get('/api/miniportfolios/:portfolioId', (req, res) => {
   const { portfolioId } = req.params;
 
@@ -2841,9 +2842,12 @@ app.get('/api/miniportfolios/:portfolioId', (req, res) => {
       mp.role,
       mp.goals,
       mp.period,
+      tr.activity_type AS category,
+      tr.meeting_type AS meeting_type,
       GROUP_CONCAT(DISTINCT CONCAT(tm.part, ': ', u.name) SEPARATOR ', ') AS team_roles
     FROM miniportfolios mp
     JOIN teams t ON mp.team_id = t.team_id
+    JOIN team_recruitments tr ON t.recruitment_id = tr.recruitment_id   -- ✅ 추가
     JOIN team_members tm ON t.team_id = tm.team_id
     JOIN users u ON tm.user_id = u.id
     WHERE mp.portfolio_id = ?
@@ -2861,8 +2865,3 @@ app.get('/api/miniportfolios/:portfolioId', (req, res) => {
     res.json(result[0]);
   });
 });
-
-//비밀번호 재설정
-app.use('/api/auth', require('./routes/auth.reset')); // 위 파일 경로 맞춰서
-
-app.listen(3000, () => console.log('API on 3000'));
