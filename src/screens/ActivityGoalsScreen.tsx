@@ -16,6 +16,10 @@ const INPUT_BG = '#F2F4F7';
 const TEXT_MAIN = '#101828';
 const TEXT_HINT = '#667085';
 
+// ‘진행중’ 하이라이트(연보라 배경 + 라운드)
+const HIGHLIGHT_BG = 'rgba(122, 90, 248, 0.12)';
+const HIGHLIGHT_BORDER = 'rgba(122, 90, 248, 0.12)';
+
 type Team = {
   team_id: number;
   team_name: string;
@@ -89,7 +93,6 @@ export default function ActivityGoalsScreen() {
     else Alert.alert('', msg);
   };
 
-  // ✅ (선택사항) Todo/Activity 화면과 정렬 일치시키고 싶으면 동일한 sort 사용
   const sortTeams = (arr: Team[]) =>
     [...arr].sort((a, b) => a.team_name.localeCompare(b.team_name));
 
@@ -163,13 +166,14 @@ export default function ActivityGoalsScreen() {
 
   const toggleStatus = async (todo: Todo) => {
     try {
+      const newStatus = nextStatus(todo.status);
       await axios.put(
         `${API_BASE_URL}/todos/${todo.todo_id}`,
-        { status: nextStatus(todo.status) },
+        { status: newStatus },
         { headers: authHeader }
       );
       setGoals((prev) =>
-        prev.map((t) => (t.todo_id === todo.todo_id ? { ...t, status: nextStatus(todo.status) } : t))
+        prev.map((t) => (t.todo_id === todo.todo_id ? { ...t, status: newStatus } : t))
       );
     } catch {
       notify('상태 변경 실패');
@@ -206,7 +210,6 @@ export default function ActivityGoalsScreen() {
 
   // 추가
   const openDraft = () => {
-    // 이미 열려있거나 제출 중이면 무시
     if (draftOpen || isSubmittingRef.current) return;
     setDraftOpen(true);
     setDraftText('');
@@ -314,8 +317,11 @@ export default function ActivityGoalsScreen() {
   const renderRow = (todo: Todo) => {
     const isEditing = editingId === todo.todo_id;
     const isDone = todo.status === '완료';
+    const inProgress = todo.status === '진행중';
+
     return (
       <View key={todo.todo_id} style={styles.row}>
+        {/* 체크박스: 완료일 때만 보라색 체크 */}
         <Pressable onPress={() => toggleStatus(todo)}>
           <View style={[styles.checkbox, isDone && styles.checkboxOn]}>
             {isDone && <Text style={styles.checkMark}>✓</Text>}
@@ -324,6 +330,7 @@ export default function ActivityGoalsScreen() {
 
         <View style={{ width: 10 }} />
 
+        {/* 본문 */}
         {isEditing ? (
           <TextInput
             ref={inputRef}
@@ -334,20 +341,28 @@ export default function ActivityGoalsScreen() {
             placeholderTextColor="#B3B8C3"
             autoFocus
             returnKeyType="done"
-            // 이중 호출 방지: onBlur 제거, 제출은 Enter(완료)로만
             onSubmitEditing={() => saveEdit(todo)}
           />
         ) : (
           <Pressable onLongPress={() => beginEdit(todo)} onPress={() => beginEdit(todo)}>
-            <Text
-              style={[
-                styles.todoText,
-                isDone && { textDecorationLine: 'line-through', color: '#9AA0A6' },
-              ]}
-              numberOfLines={2}
-            >
-              {todo.title}
-            </Text>
+            {inProgress ? (
+              // ‘진행중’ → 보라색 하이라이트 캡슐
+              <View style={styles.progressPill}>
+                <Text style={styles.progressText} numberOfLines={2}>
+                  {todo.title}
+                </Text>
+              </View>
+            ) : (
+              <Text
+                style={[
+                  styles.todoText,
+                  isDone && { textDecorationLine: 'line-through', color: '#9AA0A6' },
+                ]}
+                numberOfLines={2}
+              >
+                {todo.title}
+              </Text>
+            )}
           </Pressable>
         )}
       </View>
@@ -367,7 +382,6 @@ export default function ActivityGoalsScreen() {
           placeholder="새 목표 입력"
           placeholderTextColor="#B3B8C3"
           returnKeyType="done"
-          // 이중 호출 방지: onBlur 제거, 제출은 Enter(완료)로만
           onSubmitEditing={submitDraft}
         />
       </View>
@@ -468,7 +482,7 @@ export default function ActivityGoalsScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* 날짜 선택 모달 - Modal 사용으로 다른 UI와 겹침 방지 */}
+      {/* 날짜 선택 모달 */}
       <Modal
         visible={datePickerVisible}
         transparent
@@ -583,6 +597,7 @@ const styles = StyleSheet.create({
   },
 
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
+
   checkbox: {
     width: 20, height: 20, borderRadius: 5, borderWidth: 2, borderColor: '#C7C9D1',
     alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff',
@@ -593,6 +608,22 @@ const styles = StyleSheet.create({
   todoText: { fontSize: 16, color: TEXT_MAIN },
   input: { flex: 1, paddingVertical: 4 },
   empty: { fontSize: 14, color: '#999' },
+
+  // 진행중 하이라이트
+  progressPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: HIGHLIGHT_BG,
+    borderWidth: 1,
+    borderColor: HIGHLIGHT_BORDER,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  progressText: {
+    fontSize: 16,
+    color: '#0F172A',
+    fontWeight: '700',
+  },
 
   // 일정 관리
   dueRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, marginBottom: 18, marginTop: 6 },

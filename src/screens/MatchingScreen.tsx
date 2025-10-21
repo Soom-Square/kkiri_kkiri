@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Platform,
-  Image, // ← 추가
+  Image,
 } from 'react-native';
 import axios from 'axios';
 import { useNavigation } from '@react-navigation/native';
@@ -17,6 +17,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuth } from '../context/AuthContext';
 import { useFocusEffect } from '@react-navigation/native';
 import CommonHeader from '../components/CommonHeader';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const BASE_URL =
   Platform.OS === 'android'
@@ -53,6 +54,7 @@ type Application = {
 
 const MatchingScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
+  const insets = useSafeAreaInsets();
 
   const [searchText, setSearchText] = useState('');
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -122,50 +124,56 @@ const MatchingScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <CommonHeader bottomSpace={14} /> 
-      {/* 검색창 (돋보기 이미지) */}
-      <View style={styles.searchContainer}>
-        <Image
-          source={require('../assets/search-md.png')}
-          style={{ width: 20, height: 20, tintColor: '#667085', marginRight: 8 }}
-          resizeMode="contain"
-        />
-        <TextInput
-          placeholder="검색어를 입력하세요"
-          value={searchText}
-          onChangeText={setSearchText}
-          placeholderTextColor="#667085"
-          style={styles.searchInput}
-        />
-      </View>
+      <CommonHeader bottomSpace={14} />
 
-      {/* 카테고리 체크박스 */}
-      <View style={styles.filterBox}>
-        <View style={styles.checkboxGrid}>
-          {categories.map((cat) => {
-            const selected = selectedCategories.includes(cat);
-            return (
-              <TouchableOpacity
-                key={cat}
-                style={styles.checkboxItem}
-                onPress={() => toggleCategory(cat)}
-                activeOpacity={0.7}
-              >
-                <View
-                  style={[
-                    styles.checkboxSquare,
-                    selected && styles.checkboxSquareSelected,
-                  ]}
-                />
-                <Text style={styles.checkboxLabel}>{cat}</Text>
-              </TouchableOpacity>
-            );
-          })}
+      {/* 본문은 스크롤 가능 */}
+      <ScrollView
+        contentContainerStyle={{
+          paddingBottom: insets.bottom + 96, // 고정 버튼 아래로 여백
+        }}
+      >
+        {/* 검색창 */}
+        <View style={styles.searchContainer}>
+          <Image
+            source={require('../assets/search-md.png')}
+            style={{ width: 20, height: 20, tintColor: '#667085', marginRight: 8 }}
+            resizeMode="contain"
+          />
+          <TextInput
+            placeholder="검색어를 입력하세요"
+            value={searchText}
+            onChangeText={setSearchText}
+            placeholderTextColor="#667085"
+            style={styles.searchInput}
+          />
         </View>
-      </View>
 
-      {/* 리스트 */}
-      <ScrollView>
+        {/* 카테고리 체크박스 */}
+        <View style={styles.filterBox}>
+          <View style={styles.checkboxGrid}>
+            {categories.map((cat) => {
+              const selected = selectedCategories.includes(cat);
+              return (
+                <TouchableOpacity
+                  key={cat}
+                  style={styles.checkboxItem}
+                  onPress={() => toggleCategory(cat)}
+                  activeOpacity={0.7}
+                >
+                  <View
+                    style={[
+                      styles.checkboxSquare,
+                      selected && styles.checkboxSquareSelected,
+                    ]}
+                  />
+                  <Text style={styles.checkboxLabel}>{cat}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* 리스트 */}
         {filtered.map((r) => {
           const current = headcountsByRecruitment.get(r.recruitment_id) || 0;
           return (
@@ -191,18 +199,24 @@ const MatchingScreen = () => {
             </TouchableOpacity>
           );
         })}
-
-        {/* 하단 “팀 만들기” 버튼 */}
-        <View style={{ alignItems: 'center', marginTop: 16, marginBottom: 24 }}>
-          <TouchableOpacity
-            style={styles.createBtn}
-            onPress={() => navigation.navigate('TeamMake', { user } as never)}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.createBtnText}>팀 만들기</Text>
-          </TouchableOpacity>
-        </View>
       </ScrollView>
+
+      {/* 하단 고정 “팀 만들기” 버튼 */}
+      <View
+        pointerEvents="box-none"
+        style={[
+          styles.fabWrapper,
+          { paddingBottom: Math.max(insets.bottom, 8) },
+        ]}
+      >
+        <TouchableOpacity
+          style={styles.createBtn}
+          onPress={() => navigation.navigate('TeamMake', { user } as never)}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.createBtnText}>팀 만들기</Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 };
@@ -212,18 +226,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
     paddingTop: 20,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-    paddingHorizontal: 16,
-  },
-  logo: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#7A5AF8',
   },
   searchContainer: {
     flexDirection: 'row',
@@ -299,12 +301,34 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#475467',
   },
+
+  // 하단 고정 영역
+  fabWrapper: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0, // safe-area padding은 위에서 더함
+    alignItems: 'center',
+  },
   createBtn: {
-    minWidth: 140,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 20,
+    minWidth: 160,
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 22,
     backgroundColor: '#7A5AF8',
+    // 그림자/입체감
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOpacity: 0.15,
+        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 4 },
+      },
+      android: {
+        elevation: 6,
+      },
+    }),
+    marginBottom: 8, // 홈 인디케이터와 약간 거리
   },
   createBtnText: {
     color: '#fff',

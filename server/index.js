@@ -2869,3 +2869,8 @@ app.get('/api/miniportfolios/:portfolioId', (req, res) => {
     res.json(result[0]);
   });
 });
+
+//비밀번호 재설정
+app.use('/api/auth', require('./routes/auth.reset')); // 위 파일 경로 맞춰서
+
+app.listen(3000, () => console.log('API on 3000'));
