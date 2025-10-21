@@ -69,6 +69,10 @@ export default function ActivityGoalsScreen() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingText, setEditingText] = useState('');
 
+  // 이중 제출 가드
+  const isSubmittingRef = useRef(false);
+  const isSavingRef = useRef(false);
+
   // 일정 관리(마감일)
   const [dueDate, setDueDate] = useState<Date | null>(null);
   const [dueDateText, setDueDateText] = useState(''); // YYYY.MM.DD
@@ -177,7 +181,11 @@ export default function ActivityGoalsScreen() {
     setEditingId(todo.todo_id);
     setEditingText(todo.title);
   };
+
   const saveEdit = async (todo: Todo) => {
+    if (isSavingRef.current) return;
+    isSavingRef.current = true;
+
     const text = editingText.trim();
     try {
       if (text === '') {
@@ -190,6 +198,7 @@ export default function ActivityGoalsScreen() {
     } catch {
       notify('편집/삭제 실패');
     } finally {
+      isSavingRef.current = false;
       setEditingId(null);
       setEditingText('');
     }
@@ -197,19 +206,26 @@ export default function ActivityGoalsScreen() {
 
   // 추가
   const openDraft = () => {
+    // 이미 열려있거나 제출 중이면 무시
+    if (draftOpen || isSubmittingRef.current) return;
     setDraftOpen(true);
     setDraftText('');
     setTimeout(() => inputRef.current?.focus(), 0);
   };
+
   const submitDraft = async () => {
+    if (isSubmittingRef.current) return;
     if (!selected || !user) return;
+
     const text = draftText.trim();
     if (!text) {
       setDraftOpen(false);
       setDraftText('');
       return;
     }
+
     try {
+      isSubmittingRef.current = true;
       const today = new Date();
       const s = toYMD(today);
 
@@ -228,6 +244,7 @@ export default function ActivityGoalsScreen() {
     } catch {
       notify('전체 목표 추가 실패');
     } finally {
+      isSubmittingRef.current = false;
       setDraftOpen(false);
       setDraftText('');
     }
@@ -317,8 +334,8 @@ export default function ActivityGoalsScreen() {
             placeholderTextColor="#B3B8C3"
             autoFocus
             returnKeyType="done"
+            // 이중 호출 방지: onBlur 제거, 제출은 Enter(완료)로만
             onSubmitEditing={() => saveEdit(todo)}
-            onBlur={() => saveEdit(todo)}
           />
         ) : (
           <Pressable onLongPress={() => beginEdit(todo)} onPress={() => beginEdit(todo)}>
@@ -350,8 +367,8 @@ export default function ActivityGoalsScreen() {
           placeholder="새 목표 입력"
           placeholderTextColor="#B3B8C3"
           returnKeyType="done"
+          // 이중 호출 방지: onBlur 제거, 제출은 Enter(완료)로만
           onSubmitEditing={submitDraft}
-          onBlur={submitDraft}
         />
       </View>
     ) : null;
@@ -408,10 +425,10 @@ export default function ActivityGoalsScreen() {
       )}
 
       <View style={{ alignItems: 'center', marginTop: 14 }}>
-        <Pressable onPress={openDraft}>
+        <Pressable onPress={openDraft} disabled={draftOpen || isSubmittingRef.current}>
           <Image
             source={require('../assets/plus-circle.png')}
-            style={{ width: 32, height: 32 }}
+            style={{ width: 32, height: 32, opacity: draftOpen || isSubmittingRef.current ? 0.5 : 1 }}
             resizeMode="contain"
           />
         </Pressable>
