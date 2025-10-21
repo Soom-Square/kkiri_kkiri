@@ -169,27 +169,27 @@ export default function TodoScreen() {
 
   // 팀 목록 로딩
   // ✅ 팀 목록 로드 + ActivityScreen에서 전달된 초기 teamId 반영
-useEffect(() => {
-  if (!user) return;
-  setLoadingTeams(true);
-  axios
-    .get<Team[]>(`${API_BASE_URL}/my-teams`, { headers: authHeader })
-    .then((res) => {
-      const data = sortTeams(res.data ?? []); // ✅ 정렬 통일
-      setTeams(data);
+  useEffect(() => {
+    if (!user) return;
+    setLoadingTeams(true);
+    axios
+      .get<Team[]>(`${API_BASE_URL}/my-teams`, { headers: authHeader })
+      .then((res) => {
+        const data = sortTeams(res.data ?? []); // ✅ 정렬 통일
+        setTeams(data);
 
-      // ✅ ActivityScreen에서 전달된 팀ID가 있으면 그대로 선택
-      if (initialTeamId) {
-        const matched = data.find((t) => t.team_id === initialTeamId);
-        if (matched) setSelected(matched);
-        else if (data.length) setSelected(data[0]);
-      } else if (data.length) {
-        setSelected(data[0]);
-      }
-    })
-    .catch((err) => console.error('팀 목록 불러오기 실패:', err))
-    .finally(() => setLoadingTeams(false));
-}, [user, initialTeamId]);
+        // ✅ ActivityScreen에서 전달된 팀ID가 있으면 그대로 선택
+        if (initialTeamId) {
+          const matched = data.find((t) => t.team_id === initialTeamId);
+          if (matched) setSelected(matched);
+          else if (data.length) setSelected(data[0]);
+        } else if (data.length) {
+          setSelected(data[0]);
+        }
+      })
+      .catch((err) => console.error('팀 목록 불러오기 실패:', err))
+      .finally(() => setLoadingTeams(false));
+  }, [user, initialTeamId]);
 
   // 기간별 데이터 로딩
   const fetchRange = async (scope: Scope) => {

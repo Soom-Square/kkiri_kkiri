@@ -1474,10 +1474,14 @@ app.get('/my-teams', requireUser, (req, res) => {
   const userId = req.user.id;
 
   const sql = `
-    SELECT tm.team_id, t.team_name, tm.part, tm.part
+    SELECT
+      tm.team_id,
+      t.team_name,
+      tm.part
     FROM team_members tm
     JOIN teams t ON t.team_id = tm.team_id
     WHERE tm.user_id = ?
+      AND t.activity_status = 'IN_PROGRESS'
     ORDER BY t.team_name ASC
   `;
 

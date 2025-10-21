@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState, useLayoutEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, FlatList, Pressable,
-  TextInput, Image, ActivityIndicator, Platform, Alert, ToastAndroid
+  TextInput, Image, ActivityIndicator, Platform, Alert, ToastAndroid, Modal
 } from 'react-native';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
@@ -45,8 +45,9 @@ export default function ActivityGoalsScreen() {
   const navigation = useNavigation<any>();
   const { user } = useAuth();
   const authHeader = user ? { 'x-user-id': String(user.id) } : undefined;
-  const route = useRoute<any>();                    
-  const initialTeamId = route.params?.teamId ?? null; 
+  const route = useRoute<any>();
+  const initialTeamId = route.params?.teamId ?? null;
+
   useLayoutEffect(() => {
     navigation.setOptions({ title: '활동 설정' });
   }, [navigation]);
@@ -95,10 +96,9 @@ export default function ActivityGoalsScreen() {
     axios
       .get<Team[]>(`${API_BASE_URL}/my-teams`, { headers: authHeader })
       .then((res) => {
-        const data = sortTeams(res.data ?? []);           // ✅ 정렬 통일(선택)
+        const data = sortTeams(res.data ?? []);
         setTeams(data);
 
-        // ✅ TodoScreen에서 받은 teamId가 있으면 우선 적용
         if (initialTeamId) {
           const matched = data.find(t => t.team_id === initialTeamId);
           if (matched) {
@@ -106,12 +106,12 @@ export default function ActivityGoalsScreen() {
             return;
           }
         }
-        // 전달값이 없거나 매칭 실패 시 첫 항목
         if (data.length) setSelected(data[0]);
       })
       .catch(() => notify('팀 목록 불러오기 실패'))
       .finally(() => setLoadingTeams(false));
-  }, [user, initialTeamId]); // ✅ initialTeamId 의존성 추가
+  }, [user, initialTeamId]);
+
   // 팀이 바뀌면 팀 공용 목표 + due_date + activity_status 로드
   useEffect(() => {
     if (!user || !selected) return;
@@ -119,7 +119,6 @@ export default function ActivityGoalsScreen() {
     fetchTeamMeta(selected.team_id);
   }, [user, selected]);
 
-  // 팀 메타 불러오기
   const fetchTeamMeta = async (teamId: number) => {
     try {
       const { data } = await axios.get<Team>(`${API_BASE_URL}/teams/${teamId}`, {
@@ -135,11 +134,11 @@ export default function ActivityGoalsScreen() {
       }
       setActivityStatus((data.activity_status as any) ?? null);
     } catch {
-      // 메타 없으면 무시
+      // ignore
     }
   };
 
-  // 팀 공용 전체 목표 조회 (all=true)
+  // 팀 공용 전체 목표 조회
   const fetchTeamWideGoals = async (teamId: number) => {
     setLoadingGoals(true);
     try {
@@ -155,7 +154,6 @@ export default function ActivityGoalsScreen() {
     }
   };
 
-  // 상태 순환
   const nextStatus = (s: Todo['status']): Todo['status'] =>
     s === '미진행' ? '진행중' : s === '진행중' ? '완료' : '미진행';
 
@@ -212,7 +210,7 @@ export default function ActivityGoalsScreen() {
       return;
     }
     try {
-      const today = new Date(); // 옵션 B
+      const today = new Date();
       const s = toYMD(today);
 
       const { data: created } = await axios.post<Todo>(
@@ -262,7 +260,6 @@ export default function ActivityGoalsScreen() {
     }
   };
 
-  // 활동 종료
   const endActivity = async () => {
     if (!selected) return;
     if (activityStatus === 'COMPLETED') {
@@ -297,7 +294,6 @@ export default function ActivityGoalsScreen() {
     }
   };
 
-  // 렌더
   const renderRow = (todo: Todo) => {
     const isEditing = editingId === todo.todo_id;
     const isDone = todo.status === '완료';
@@ -455,8 +451,14 @@ export default function ActivityGoalsScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* 날짜 선택 모달 */}
-      {datePickerVisible && (
+      {/* 날짜 선택 모달 - Modal 사용으로 다른 UI와 겹침 방지 */}
+      <Modal
+        visible={datePickerVisible}
+        transparent
+        animationType="fade"
+        presentationStyle="overFullScreen"
+        onRequestClose={() => setDatePickerVisible(false)}
+      >
         <View style={styles.dateModalBg}>
           <View style={styles.dateModalCard}>
             <Text style={styles.dateModalTitle}>마감일 선택</Text>
@@ -498,28 +500,28 @@ export default function ActivityGoalsScreen() {
             )}
           </View>
         </View>
-      )}
+      </Modal>
 
-        {/* 활동 관리 */}
-        <Text style={styles.sectionTitle}>활동 관리</Text>
-        <View style={styles.divider} />
+      {/* 활동 관리 */}
+      <Text style={styles.sectionTitle}>활동 관리</Text>
+      <View style={styles.divider} />
 
-        <View style={styles.activityManageSection}>
+      <View style={styles.activityManageSection}>
         <TouchableOpacity
-            style={[
+          style={[
             styles.activityEndBtn,
             (activityStatus === 'COMPLETED' || endingActivity) && { opacity: 0.5 },
-            ]}
-            onPress={endActivity}
-            disabled={activityStatus === 'COMPLETED' || endingActivity}
+          ]}
+          onPress={endActivity}
+          disabled={activityStatus === 'COMPLETED' || endingActivity}
         >
-            <Text style={styles.activityEndText}>활동 종료</Text>
+          <Text style={styles.activityEndText}>활동 종료</Text>
         </TouchableOpacity>
 
         <Text style={styles.activityNote}>
-            활동 종료 시 지난 활동으로 이동되며 되돌릴 수 없습니다.
+          활동 종료 시 지난 활동으로 이동되며 되돌릴 수 없습니다.
         </Text>
-        </View>
+      </View>
     </View>
   );
 }
@@ -601,8 +603,7 @@ const styles = StyleSheet.create({
 
   // 날짜 모달
   dateModalBg: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
+    flex: 1,
     backgroundColor: 'rgba(0,0,0,0.35)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -618,17 +619,16 @@ const styles = StyleSheet.create({
   modalBtnText: { fontSize: 15, fontWeight: '700' },
 
   activityManageSection: {
-    alignItems: 'flex-start', // 왼쪽 정렬
+    alignItems: 'flex-start',
     marginTop: 6,
     marginBottom: 8,
- },
-  // 활동 관리
+  },
   activityEndBtn: {
     backgroundColor: PURPLE,
     paddingVertical: 12,
     paddingHorizontal: 22,
     borderRadius: 22,
-    alignSelf: 'flex-start', // 부모가 flex-start라도 명시적으로 고정
+    alignSelf: 'flex-start',
   },
   activityEndText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   activityNote: {
@@ -636,6 +636,6 @@ const styles = StyleSheet.create({
     color: '#9AA0A6',
     marginTop: 8,
     textAlign: 'left',
-    paddingLeft: 4, // 버튼보다 살짝 들여쓰기 (디자인 느낌 맞추기)
+    paddingLeft: 4,
   },
 });
