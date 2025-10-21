@@ -10,9 +10,9 @@ import {
   StyleSheet,
   Platform,
   Alert,
+  Image,
 } from 'react-native';
 import axios from 'axios';
-import Icon from 'react-native-vector-icons/Ionicons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
@@ -20,7 +20,6 @@ const BASE_URL =
   Platform.OS === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
 
 const CATEGORIES = ['공모전', '비교과', '경진대회', '동아리', '소모임', '기타'] as const;
-
 const DEPARTMENTS = ['전학과', '컴퓨터공학과', '디자인학부', '경영학과', '기타'];
 const PERIODS = ['4주', '8주', '한 학기', '상시'];
 const MEMBERS = ['2', '3', '4', '5', '6', '8', '10', '20'];
@@ -123,7 +122,10 @@ const MakeTeamScreen = () => {
         onPress={() => setOpen(!open)}
       >
         <Text style={[styles.ddLabel, value === label && { color: '#667085' }]}>{value}</Text>
-        <Icon name={open ? 'chevron-up' : 'chevron-down'} size={18} color="#101828" />
+        <Image
+            source={require('../assets/triangle.png')}
+            style={[styles.triangleIcon, open && { transform: [{ rotate: '180deg' }] }]}
+          />
       </TouchableOpacity>
 
       {open && (
@@ -318,6 +320,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   ddLabel: { fontSize: 14, color: '#101828', fontWeight: '700' },
+  triangleIcon: { width: 14, height: 14, tintColor: '#101828' },
+  
   ddMenu: {
     backgroundColor: '#fff',
     borderWidth: 1,
@@ -368,6 +372,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     overflow: 'hidden',
   },
+
 });
 
 export default MakeTeamScreen;

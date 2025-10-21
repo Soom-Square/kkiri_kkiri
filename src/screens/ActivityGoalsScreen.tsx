@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState, useLayoutEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, FlatList, Pressable,
-  TextInput, Image, ActivityIndicator, Platform, Alert, ToastAndroid
+  TextInput, Image, ActivityIndicator, Platform, Alert, ToastAndroid, Modal
 } from 'react-native';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
@@ -15,6 +15,10 @@ const PURPLE = '#7A5AF8';
 const INPUT_BG = '#F2F4F7';
 const TEXT_MAIN = '#101828';
 const TEXT_HINT = '#667085';
+
+// ‘진행중’ 하이라이트(연보라 배경 + 라운드)
+const HIGHLIGHT_BG = 'rgba(122, 90, 248, 0.12)';
+const HIGHLIGHT_BORDER = 'rgba(122, 90, 248, 0.12)';
 
 type Team = {
   team_id: number;
@@ -45,8 +49,9 @@ export default function ActivityGoalsScreen() {
   const navigation = useNavigation<any>();
   const { user } = useAuth();
   const authHeader = user ? { 'x-user-id': String(user.id) } : undefined;
-  const route = useRoute<any>();                    
-  const initialTeamId = route.params?.teamId ?? null; 
+  const route = useRoute<any>();
+  const initialTeamId = route.params?.teamId ?? null;
+
   useLayoutEffect(() => {
     navigation.setOptions({ title: '활동 설정' });
   }, [navigation]);
@@ -68,6 +73,10 @@ export default function ActivityGoalsScreen() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingText, setEditingText] = useState('');
 
+  // 이중 제출 가드
+  const isSubmittingRef = useRef(false);
+  const isSavingRef = useRef(false);
+
   // 일정 관리(마감일)
   const [dueDate, setDueDate] = useState<Date | null>(null);
   const [dueDateText, setDueDateText] = useState(''); // YYYY.MM.DD
@@ -84,7 +93,6 @@ export default function ActivityGoalsScreen() {
     else Alert.alert('', msg);
   };
 
-  // ✅ (선택사항) Todo/Activity 화면과 정렬 일치시키고 싶으면 동일한 sort 사용
   const sortTeams = (arr: Team[]) =>
     [...arr].sort((a, b) => a.team_name.localeCompare(b.team_name));
 
@@ -95,10 +103,9 @@ export default function ActivityGoalsScreen() {
     axios
       .get<Team[]>(`${API_BASE_URL}/my-teams`, { headers: authHeader })
       .then((res) => {
-        const data = sortTeams(res.data ?? []);           // ✅ 정렬 통일(선택)
+        const data = sortTeams(res.data ?? []);
         setTeams(data);
 
-        // ✅ TodoScreen에서 받은 teamId가 있으면 우선 적용
         if (initialTeamId) {
           const matched = data.find(t => t.team_id === initialTeamId);
           if (matched) {
@@ -106,12 +113,12 @@ export default function ActivityGoalsScreen() {
             return;
           }
         }
-        // 전달값이 없거나 매칭 실패 시 첫 항목
         if (data.length) setSelected(data[0]);
       })
       .catch(() => notify('팀 목록 불러오기 실패'))
       .finally(() => setLoadingTeams(false));
-  }, [user, initialTeamId]); // ✅ initialTeamId 의존성 추가
+  }, [user, initialTeamId]);
+
   // 팀이 바뀌면 팀 공용 목표 + due_date + activity_status 로드
   useEffect(() => {
     if (!user || !selected) return;
@@ -119,7 +126,6 @@ export default function ActivityGoalsScreen() {
     fetchTeamMeta(selected.team_id);
   }, [user, selected]);
 
-  // 팀 메타 불러오기
   const fetchTeamMeta = async (teamId: number) => {
     try {
       const { data } = await axios.get<Team>(`${API_BASE_URL}/teams/${teamId}`, {
@@ -135,11 +141,11 @@ export default function ActivityGoalsScreen() {
       }
       setActivityStatus((data.activity_status as any) ?? null);
     } catch {
-      // 메타 없으면 무시
+      // ignore
     }
   };
 
-  // 팀 공용 전체 목표 조회 (all=true)
+  // 팀 공용 전체 목표 조회
   const fetchTeamWideGoals = async (teamId: number) => {
     setLoadingGoals(true);
     try {
@@ -155,19 +161,19 @@ export default function ActivityGoalsScreen() {
     }
   };
 
-  // 상태 순환
   const nextStatus = (s: Todo['status']): Todo['status'] =>
     s === '미진행' ? '진행중' : s === '진행중' ? '완료' : '미진행';
 
   const toggleStatus = async (todo: Todo) => {
     try {
+      const newStatus = nextStatus(todo.status);
       await axios.put(
         `${API_BASE_URL}/todos/${todo.todo_id}`,
-        { status: nextStatus(todo.status) },
+        { status: newStatus },
         { headers: authHeader }
       );
       setGoals((prev) =>
-        prev.map((t) => (t.todo_id === todo.todo_id ? { ...t, status: nextStatus(todo.status) } : t))
+        prev.map((t) => (t.todo_id === todo.todo_id ? { ...t, status: newStatus } : t))
       );
     } catch {
       notify('상태 변경 실패');
@@ -179,7 +185,11 @@ export default function ActivityGoalsScreen() {
     setEditingId(todo.todo_id);
     setEditingText(todo.title);
   };
+
   const saveEdit = async (todo: Todo) => {
+    if (isSavingRef.current) return;
+    isSavingRef.current = true;
+
     const text = editingText.trim();
     try {
       if (text === '') {
@@ -192,6 +202,7 @@ export default function ActivityGoalsScreen() {
     } catch {
       notify('편집/삭제 실패');
     } finally {
+      isSavingRef.current = false;
       setEditingId(null);
       setEditingText('');
     }
@@ -199,20 +210,26 @@ export default function ActivityGoalsScreen() {
 
   // 추가
   const openDraft = () => {
+    if (draftOpen || isSubmittingRef.current) return;
     setDraftOpen(true);
     setDraftText('');
     setTimeout(() => inputRef.current?.focus(), 0);
   };
+
   const submitDraft = async () => {
+    if (isSubmittingRef.current) return;
     if (!selected || !user) return;
+
     const text = draftText.trim();
     if (!text) {
       setDraftOpen(false);
       setDraftText('');
       return;
     }
+
     try {
-      const today = new Date(); // 옵션 B
+      isSubmittingRef.current = true;
+      const today = new Date();
       const s = toYMD(today);
 
       const { data: created } = await axios.post<Todo>(
@@ -230,6 +247,7 @@ export default function ActivityGoalsScreen() {
     } catch {
       notify('전체 목표 추가 실패');
     } finally {
+      isSubmittingRef.current = false;
       setDraftOpen(false);
       setDraftText('');
     }
@@ -262,7 +280,6 @@ export default function ActivityGoalsScreen() {
     }
   };
 
-  // 활동 종료
   const endActivity = async () => {
     if (!selected) return;
     if (activityStatus === 'COMPLETED') {
@@ -297,12 +314,14 @@ export default function ActivityGoalsScreen() {
     }
   };
 
-  // 렌더
   const renderRow = (todo: Todo) => {
     const isEditing = editingId === todo.todo_id;
     const isDone = todo.status === '완료';
+    const inProgress = todo.status === '진행중';
+
     return (
       <View key={todo.todo_id} style={styles.row}>
+        {/* 체크박스: 완료일 때만 보라색 체크 */}
         <Pressable onPress={() => toggleStatus(todo)}>
           <View style={[styles.checkbox, isDone && styles.checkboxOn]}>
             {isDone && <Text style={styles.checkMark}>✓</Text>}
@@ -311,6 +330,7 @@ export default function ActivityGoalsScreen() {
 
         <View style={{ width: 10 }} />
 
+        {/* 본문 */}
         {isEditing ? (
           <TextInput
             ref={inputRef}
@@ -322,19 +342,27 @@ export default function ActivityGoalsScreen() {
             autoFocus
             returnKeyType="done"
             onSubmitEditing={() => saveEdit(todo)}
-            onBlur={() => saveEdit(todo)}
           />
         ) : (
           <Pressable onLongPress={() => beginEdit(todo)} onPress={() => beginEdit(todo)}>
-            <Text
-              style={[
-                styles.todoText,
-                isDone && { textDecorationLine: 'line-through', color: '#9AA0A6' },
-              ]}
-              numberOfLines={2}
-            >
-              {todo.title}
-            </Text>
+            {inProgress ? (
+              // ‘진행중’ → 보라색 하이라이트 캡슐
+              <View style={styles.progressPill}>
+                <Text style={styles.progressText} numberOfLines={2}>
+                  {todo.title}
+                </Text>
+              </View>
+            ) : (
+              <Text
+                style={[
+                  styles.todoText,
+                  isDone && { textDecorationLine: 'line-through', color: '#9AA0A6' },
+                ]}
+                numberOfLines={2}
+              >
+                {todo.title}
+              </Text>
+            )}
           </Pressable>
         )}
       </View>
@@ -355,7 +383,6 @@ export default function ActivityGoalsScreen() {
           placeholderTextColor="#B3B8C3"
           returnKeyType="done"
           onSubmitEditing={submitDraft}
-          onBlur={submitDraft}
         />
       </View>
     ) : null;
@@ -412,10 +439,10 @@ export default function ActivityGoalsScreen() {
       )}
 
       <View style={{ alignItems: 'center', marginTop: 14 }}>
-        <Pressable onPress={openDraft}>
+        <Pressable onPress={openDraft} disabled={draftOpen || isSubmittingRef.current}>
           <Image
             source={require('../assets/plus-circle.png')}
-            style={{ width: 32, height: 32 }}
+            style={{ width: 32, height: 32, opacity: draftOpen || isSubmittingRef.current ? 0.5 : 1 }}
             resizeMode="contain"
           />
         </Pressable>
@@ -456,7 +483,13 @@ export default function ActivityGoalsScreen() {
       </View>
 
       {/* 날짜 선택 모달 */}
-      {datePickerVisible && (
+      <Modal
+        visible={datePickerVisible}
+        transparent
+        animationType="fade"
+        presentationStyle="overFullScreen"
+        onRequestClose={() => setDatePickerVisible(false)}
+      >
         <View style={styles.dateModalBg}>
           <View style={styles.dateModalCard}>
             <Text style={styles.dateModalTitle}>마감일 선택</Text>
@@ -498,28 +531,28 @@ export default function ActivityGoalsScreen() {
             )}
           </View>
         </View>
-      )}
+      </Modal>
 
-        {/* 활동 관리 */}
-        <Text style={styles.sectionTitle}>활동 관리</Text>
-        <View style={styles.divider} />
+      {/* 활동 관리 */}
+      <Text style={styles.sectionTitle}>활동 관리</Text>
+      <View style={styles.divider} />
 
-        <View style={styles.activityManageSection}>
+      <View style={styles.activityManageSection}>
         <TouchableOpacity
-            style={[
+          style={[
             styles.activityEndBtn,
             (activityStatus === 'COMPLETED' || endingActivity) && { opacity: 0.5 },
-            ]}
-            onPress={endActivity}
-            disabled={activityStatus === 'COMPLETED' || endingActivity}
+          ]}
+          onPress={endActivity}
+          disabled={activityStatus === 'COMPLETED' || endingActivity}
         >
-            <Text style={styles.activityEndText}>활동 종료</Text>
+          <Text style={styles.activityEndText}>활동 종료</Text>
         </TouchableOpacity>
 
         <Text style={styles.activityNote}>
-            활동 종료 시 지난 활동으로 이동되며 되돌릴 수 없습니다.
+          활동 종료 시 지난 활동으로 이동되며 되돌릴 수 없습니다.
         </Text>
-        </View>
+      </View>
     </View>
   );
 }
@@ -564,6 +597,7 @@ const styles = StyleSheet.create({
   },
 
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
+
   checkbox: {
     width: 20, height: 20, borderRadius: 5, borderWidth: 2, borderColor: '#C7C9D1',
     alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff',
@@ -574,6 +608,22 @@ const styles = StyleSheet.create({
   todoText: { fontSize: 16, color: TEXT_MAIN },
   input: { flex: 1, paddingVertical: 4 },
   empty: { fontSize: 14, color: '#999' },
+
+  // 진행중 하이라이트
+  progressPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: HIGHLIGHT_BG,
+    borderWidth: 1,
+    borderColor: HIGHLIGHT_BORDER,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  progressText: {
+    fontSize: 16,
+    color: '#0F172A',
+    fontWeight: '700',
+  },
 
   // 일정 관리
   dueRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, marginBottom: 18, marginTop: 6 },
@@ -601,8 +651,7 @@ const styles = StyleSheet.create({
 
   // 날짜 모달
   dateModalBg: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
+    flex: 1,
     backgroundColor: 'rgba(0,0,0,0.35)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -618,17 +667,16 @@ const styles = StyleSheet.create({
   modalBtnText: { fontSize: 15, fontWeight: '700' },
 
   activityManageSection: {
-    alignItems: 'flex-start', // 왼쪽 정렬
+    alignItems: 'flex-start',
     marginTop: 6,
     marginBottom: 8,
- },
-  // 활동 관리
+  },
   activityEndBtn: {
     backgroundColor: PURPLE,
     paddingVertical: 12,
     paddingHorizontal: 22,
     borderRadius: 22,
-    alignSelf: 'flex-start', // 부모가 flex-start라도 명시적으로 고정
+    alignSelf: 'flex-start',
   },
   activityEndText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   activityNote: {
@@ -636,6 +684,6 @@ const styles = StyleSheet.create({
     color: '#9AA0A6',
     marginTop: 8,
     textAlign: 'left',
-    paddingLeft: 4, // 버튼보다 살짝 들여쓰기 (디자인 느낌 맞추기)
+    paddingLeft: 4,
   },
 });
