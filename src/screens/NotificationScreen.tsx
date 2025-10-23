@@ -11,7 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import axios from 'axios';
-import { useAuth } from '../context/AuthContext'; // ✅ 로그인 유저정보 불러올 때 사용 (이미 프로젝트에 존재)
+import { useAuth } from '../context/AuthContext';
 
 // 🔹 플랫폼별 API 주소 자동 분기
 const BASE_URL =
@@ -36,7 +36,7 @@ const timeAgo = (timestamp: string) => {
 };
 
 export default function NotificationScreen() {
-  const { user } = useAuth(); // ✅ 로그인 유저 (context에서 가져옴)
+  const { user } = useAuth();
   const [tab, setTab] = useState<'활동' | '공지'>('활동');
   const [notices, setNotices] = useState<Notice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,13 +48,20 @@ export default function NotificationScreen() {
       try {
         setLoading(true);
         const res = await axios.get(`${BASE_URL}/notifications/${user.id}`);
+        
         if (res.data.success) {
-          const mapped: Notice[] = res.data.notifications.map((n: any) => ({
-            id: String(n.id),
-            channel: n.team_name || '공지',
-            title: n.message,
-            time: timeAgo(n.created_at),
-          }));
+          const mapped: Notice[] = res.data.notifications.map((n: any) => {
+  const isSystemNotice = !n.team_id && !n.recruitment_id; // 🔥 진짜 공지 판단
+
+  return {
+    id: String(n.id),
+    channel: isSystemNotice ? '공지' : (n.activity_name || n.team_name || '활동'),
+    title: n.message,
+    time: timeAgo(n.created_at),
+  };
+});
+          
+          console.log('📩 알림 데이터:', mapped);
           setNotices(mapped);
         }
       } catch (err) {

@@ -100,7 +100,7 @@ export default function ActivityScreen() {
   const [widgetPrefs, setWidgetPrefs] = useState<WidgetPref[]>(DEFAULT_WIDGET_PREFS);
 
   const [issueRefreshKey, setIssueRefreshKey] = useState(0);
-
+  const [heatmapRefreshKey, setHeatmapRefreshKey] = useState(0);
   // 그래프 접힘/펼침 상태 (기본 펼침)
   const [graphOpen, setGraphOpen] = useState(true);
 
@@ -217,6 +217,7 @@ export default function ActivityScreen() {
       };
       reload();
       setIssueRefreshKey(k => k + 1);
+      setHeatmapRefreshKey(k => k + 1); // 🔥 추가
       return () => { alive = false; };
     }, [fetchTeams, fetchAllDataForTeam, selected?.teamId]),
   );
@@ -394,6 +395,7 @@ export default function ActivityScreen() {
                     key={w.id}
                     teamId={selected?.teamId ?? null}
                     {...(w.id === 'issue' ? { refreshKey: issueRefreshKey } : {})}
+                    {...(w.id === 'heatmap' ? { refreshKey: heatmapRefreshKey } : {})} // 🔥 추가
                   />
                 );
               })}

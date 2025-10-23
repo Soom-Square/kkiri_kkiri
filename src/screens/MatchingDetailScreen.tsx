@@ -19,6 +19,16 @@ import { useAuth } from '../context/AuthContext';
 
 const BASE_URL = Platform.OS === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
 
+const getCorrectImageUrl = (imageUrl: string | null | undefined): string | null => {
+  if (!imageUrl) return null;
+  
+  if (Platform.OS === 'android') {
+    return imageUrl.replace('http://localhost:3000', 'http://10.0.2.2:3000');
+  } else {
+    return imageUrl.replace('http://10.0.2.2:3000', 'http://localhost:3000');
+  }
+};
+
 const ICON_FROWN = require('../assets/face-frown.png');
 const ICON_HAPPY = require('../assets/face-happy.png');
 const ICON_SMILE = require('../assets/face-smile.png');
@@ -217,10 +227,16 @@ const MatchingDetailScreen = () => {
             }
             style={{ marginRight: 12 }}
           >
-            <Image
-              source={{ uri: owner?.profile_picture || 'https://via.placeholder.com/56' }}
-              style={styles.avatar}
-            />
+            {(() => {
+              const profileUri = getCorrectImageUrl(owner?.profile_picture);
+              return (
+                <Image
+                  source={{ uri: profileUri || 'https://via.placeholder.com/56' }}
+                  style={styles.avatar}
+                />
+              );
+            })()}
+
           </TouchableOpacity>
 
           <View style={{ flex: 1 }}>

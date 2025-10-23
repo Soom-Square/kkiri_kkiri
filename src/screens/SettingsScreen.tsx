@@ -16,16 +16,6 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { User } from '../types';
 import type { RootStackParamList } from '../types';
 
-// type RootStackParamList = {
-//   Login: undefined;
-//   Register: undefined;
-//   MainTabs: undefined;
-//   InfoDetail: undefined;
-//   Settings: { user: User };
-//   Evaluation: undefined;
-//   TeamFind: undefined;
-// };
-
 type SettingsNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Settings'>;
 type SettingsRouteProp = RouteProp<RootStackParamList, 'Settings'>;
 
@@ -36,9 +26,8 @@ const SettingScreen = () => {
 
   const [loading, setLoading] = useState(false);
   const [settings, setSettings] = useState({
-    teamMatching: true,
-    todos: true,
-    announcements: true,
+    notify_team_matching: true,
+    notify_announcements: true,
   });
 
   const API_BASE_URL =
@@ -54,7 +43,10 @@ const SettingScreen = () => {
         const res = await fetch(`${API_BASE_URL}/api/user-settings/${user.id}`);
         const data = await res.json();
         if (data.success && data.settings) {
-          setSettings(data.settings);
+          setSettings({
+            notify_team_matching: data.settings.notify_team_matching ?? true,
+            notify_announcements: data.settings.notify_announcements ?? true,
+          });
         }
       } catch (error) {
         console.error('설정 불러오기 오류:', error);
@@ -79,6 +71,8 @@ const SettingScreen = () => {
     } catch (error) {
       console.error('설정 저장 오류:', error);
       Alert.alert('오류', '설정 저장에 실패했습니다.');
+      // 실패 시 원래대로 롤백
+      setSettings({ ...settings, [key]: !newValue });
     }
   };
 
@@ -154,9 +148,8 @@ const SettingScreen = () => {
         <Text style={styles.sectionTitle}>알림</Text>
 
         {[
-          ['팀/팀원 매칭 알림', 'teamMatching'],
-          ['활동 할 일 알림', 'todos'],
-          ['공지사항 알림', 'announcements'],
+          ['팀/팀원 매칭 알림', 'notify_team_matching'],
+          ['공지사항 알림', 'notify_announcements'],
         ].map(([label, key]) => (
           <View style={styles.itemContainer} key={key}>
             <Text style={styles.itemLabel}>{label}</Text>

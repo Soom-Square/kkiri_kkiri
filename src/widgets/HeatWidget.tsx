@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Platform }
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, addMonths, format, isSameMonth } from 'date-fns';
+import { toZonedTime } from 'date-fns-tz';
 
 const API_BASE_URL = __DEV__
   ? (Platform.OS === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000')
@@ -10,15 +11,19 @@ const API_BASE_URL = __DEV__
 
 const TEXT_MAIN = '#101828';
 const TEXT_HINT = '#667085';
+const KST = 'Asia/Seoul';
 
 type Todo = {
   scope_start_date: string;
   status: string;
 };
 
-type Props = { teamId?: number | null };
+type Props = { 
+  teamId?: number | null;
+  refreshKey?: number;
+};
 
-export default function HeatmapWidget({ teamId }: Props) {
+export default function HeatmapWidget({ teamId, refreshKey }: Props) {
   const { user } = useAuth();
   const [todos, setTodos] = useState<Todo[]>([]);
   const [loading, setLoading] = useState(false);
@@ -34,7 +39,7 @@ export default function HeatmapWidget({ teamId }: Props) {
     try {
       setLoading(true);
       const res = await axios.get(
-        `${API_BASE_URL}/teams/${teamId}/todos?user_id=${user.id}&start=${startDate}&end=${endDate}`,
+        `${API_BASE_URL}/teams/${teamId}/todos?user_id=${user.id}&start=${startDate}&end=${endDate}&scope_type=일일`,
         { headers: { 'x-user-id': String(user.id) } }
       );
       setTodos(res.data || []);
@@ -48,17 +53,36 @@ export default function HeatmapWidget({ teamId }: Props) {
 
   useEffect(() => {
     fetchTodos();
-  }, [fetchTodos]);
+  }, [fetchTodos, refreshKey]);
 
   /** ✅ 날짜별 완료 수 계산 */
   const countByDate = useMemo(() => {
     const counts: Record<string, number> = {};
+    
+    console.log('=== 히트맵 디버깅 ===');
+    console.log('총 todos:', todos.length);
+    
+    // 🔥 중복 forEach 제거 - 단 한 번만 순회!
     todos.forEach((todo) => {
+      console.log('todo:', todo.status, todo.scope_start_date);
+      
       if (todo.status === '완료') {
-        const date = format(new Date(todo.scope_start_date), 'yyyy-MM-dd');
-        counts[date] = (counts[date] || 0) + 1;
+        try {
+          // 🔥 타임존 변환 로직 유지 (원래대로)
+          const utcDate = new Date(todo.scope_start_date);
+          const kstDate = toZonedTime(utcDate, KST);
+          const dateStr = format(kstDate, 'yyyy-MM-dd');
+
+          counts[dateStr] = (counts[dateStr] || 0) + 1;
+
+          console.log('✅ 완료된 목표:', dateStr, '(원본:', todo.scope_start_date, ')');
+        } catch (err) {
+          console.warn('❌ 날짜 변환 오류:', todo.scope_start_date, err);
+        }
       }
     });
+    
+    console.log('🟪 countByDate:', counts);
     return counts;
   }, [todos]);
 
@@ -128,7 +152,7 @@ export default function HeatmapWidget({ teamId }: Props) {
             {daysMatrix.map((week, wIdx) => (
               <View key={wIdx} style={styles.weekRow}>
                 {week.map((date, dIdx) => {
-                  const dateStr = format(date, 'yyyy-MM-dd');
+                  const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
                   const count = countByDate[dateStr] || 0;
                   const isOtherMonth = !isSameMonth(date, currentMonth);
                   return (

@@ -64,7 +64,7 @@ const NoticeWidget: React.FC<WidgetComponentProps> = ({ teamId }) => {
       }
       
       const data = await response.json();
-      setAnnouncements(data || []);
+      setAnnouncements(data.announcements || []);
     } catch (error) {
       console.error('공지사항 조회 실패:', error);
       setAnnouncements([]);

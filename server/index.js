@@ -6,7 +6,7 @@ const bodyParser = require('body-parser');
 const fs = require('fs'); // ✅ 추가: 파일 시스템 모듈
 const bcrypt = require('bcrypt'); // 파일 상단에 추가하세요
 const SALT_ROUNDS = 10;
-
+const nowSeoul = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Seoul' }); 
 const app = express();
 const PORT = 3000;
 
@@ -1216,10 +1216,11 @@ app.post('/api/applications', (req, res) => {
 
       // team_id가 없을 수도 있으니 NULL 대신 0으로 처리 (활동 탭 분류 유지)
       const notiSql = `
-        INSERT INTO notifications (user_id, team_id, message, is_read, created_at)
-        VALUES (?, ?, ?, 0, NOW())
-      `;
-      db.query(notiSql, [owner_user_id, team_id || 0, message], (notiErr) => {
+  INSERT INTO notifications 
+    (user_id, recruitment_id, message, is_read, created_at)
+  VALUES (?, ?, ?, 0, NOW());
+`;
+      db.query(notiSql, [owner_user_id, recruitment_id, message], (notiErr) => {
         if (notiErr) console.error('지원 알림 저장 실패:', notiErr);
         res.status(201).json({
           message: '신청이 등록되었습니다.',
@@ -1281,8 +1282,8 @@ app.put('/api/applications/:id/status', (req, res) => {
             if (errDel) return rollback(errDel, res);
             const msg = `${row.activity_name} 지원이 거절되었습니다.`;
             const qNoti = `
-              INSERT INTO notifications (user_id, team_id, message, is_read, created_at)
-              VALUES (?, ?, ?, 0, NOW())
+              INSERT INTO notifications (user_id, team_id, recruitment_id, message, is_read, created_at)
+              VALUES (?, ?, ?, ?, 0, NOW());
             `;
             db.query(qNoti, [row.applicant_id, row.team_id || 0, msg], (notiErr) => {
               if (notiErr) console.error('거절 알림 실패:', notiErr);
@@ -1350,8 +1351,8 @@ app.put('/api/applications/:id/status', (req, res) => {
                   : `${row.activity_name} 팀에 합류되었습니다!`;
 
                 const qNoti = `
-                  INSERT INTO notifications (user_id, team_id, message, is_read, created_at)
-                  VALUES (?, ?, ?, 0, NOW())
+                  INSERT INTO notifications (user_id, recruitment_id, message, is_read, created_at)
+                  VALUES (?, ?, ?, 0, NOW());
                 `;
                 db.query(qNoti, [row.applicant_id, teamId, msg], (notiErr) => {
                   if (notiErr) console.error('승인 알림 실패:', notiErr);
@@ -2203,40 +2204,189 @@ app.get('/teams/:teamId/daily-todos', (req, res) => {
 
 
 // ✅ GET /teams/:teamId/announcements - 팀 공지사항 조회 (독립된 라우트)
+// ✅ GET /teams/:teamId/announcements - 공지사항 목록 조회
 app.get('/teams/:teamId/announcements', (req, res) => {
   const { teamId } = req.params;
+
+  console.log(`📖 공지사항 조회 요청: teamId=${teamId}`);
+
+  // 1) 팀의 board_id 조회
+  const qFindBoard = `SELECT board_id FROM team_boards WHERE team_id = ? LIMIT 1`;
   
-  console.log(`=== 팀 ${teamId}의 공지사항 조회 ===`);
-  
-  const sql = `
-    SELECT 
-      tb.board_id,
-      tb.title as board_title,
-      tp.post_id,
-      tp.content,
-      tp.created_at,
-      u.name as author_name
-    FROM team_boards tb
-    INNER JOIN team_posts tp ON tb.board_id = tp.board_id
-    INNER JOIN users u ON tp.author_id = u.id
-    WHERE tb.team_id = ?
-    ORDER BY tp.created_at DESC
-    LIMIT 10
-  `;
-  
-  db.query(sql, [teamId], (err, results) => {
-    if (err) {
-      console.error('공지사항 조회 오류:', err);
-      return res.status(500).json({ error: 'DB_ERROR', message: '서버 오류' });
+  db.query(qFindBoard, [teamId], (err1, boardRows) => {
+    if (err1) {
+      console.error('board 조회 오류:', err1);
+      return res.status(500).json({ success: false, message: '서버 오류' });
     }
-    
-    console.log(`✅ 팀 ${teamId}의 공지사항 조회 결과: ${results.length}개`);
-    res.json(results);
+
+    if (boardRows.length === 0) {
+      // 게시판이 없으면 빈 배열 반환
+      console.log('📭 게시판 없음');
+      return res.json({ success: true, announcements: [] });
+    }
+
+    const boardId = boardRows[0].board_id;
+
+    // 2) 게시글 목록 조회 (게시판 제목 포함)
+    const qGetPosts = `
+      SELECT 
+        tp.post_id,
+        tp.content,
+        tp.created_at,
+        u.name AS author_name,
+        u.id AS author_id,
+        tb.title AS board_title
+      FROM team_posts tp
+      JOIN users u ON tp.author_id = u.id
+      JOIN team_boards tb ON tp.board_id = tb.board_id
+      WHERE tp.board_id = ?
+      ORDER BY tp.created_at DESC
+    `;
+
+    db.query(qGetPosts, [boardId], (err2, posts) => {
+      if (err2) {
+        console.error('게시글 조회 오류:', err2);
+        return res.status(500).json({ success: false, message: '서버 오류' });
+      }
+
+      console.log(`✅ 공지사항 ${posts.length}개 조회 완료`);
+      res.json({ success: true, announcements: posts });
+    });
   });
 });
 
-// ✅ 게시판 제목 수정 API
-// PUT /teams/:teamId/board-title
+// ✅ POST /teams/:teamId/announcements - 공지사항 작성 (알림 포함)
+app.post('/teams/:teamId/announcements', (req, res) => {
+  const { teamId } = req.params;
+  const { content, author_id } = req.body;
+
+  console.log('🔥 공지사항 작성 API 호출됨!');
+  console.log('teamId:', teamId);
+  console.log('author_id:', author_id);
+  console.log('content:', content);
+
+  if (!content || !content.trim()) {
+    return res.status(400).json({ success: false, message: '내용이 비어있습니다' });
+  }
+  if (!author_id) {
+    return res.status(401).json({ success: false, message: '작성자 정보가 없습니다' });
+  }
+
+  // 1) 팀의 board_id 조회 (없으면 생성)
+  const qFindBoard = `SELECT board_id FROM team_boards WHERE team_id = ? LIMIT 1`;
+  db.query(qFindBoard, [teamId], (err1, rows1) => {
+    if (err1) {
+      console.error('board 조회 오류:', err1);
+      return res.status(500).json({ success: false, message: '서버 오류' });
+    }
+
+    const ensureInsertPost = (boardId) => {
+      const qInsertPost = `
+        INSERT INTO team_posts (board_id, author_id, content, created_at)
+        VALUES (?, ?, ?, NOW())
+      `;
+      db.query(qInsertPost, [boardId, author_id, content.trim()], (err2, result2) => {
+        if (err2) {
+          console.error('게시글 작성 오류:', err2);
+          return res.status(500).json({ success: false, message: '서버 오류' });
+        }
+
+        const post_id = result2.insertId;
+
+        // 🔥 2) 팀원들에게 알림 전송 (notify_announcements = 1인 사용자만)
+        const qTeamMembers = `
+          SELECT tm.user_id, t.team_name, u.name AS author_name
+          FROM team_members tm
+          JOIN teams t ON tm.team_id = t.team_id
+          LEFT JOIN users u ON u.id = ?
+          LEFT JOIN user_settings us ON tm.user_id = us.user_id
+          WHERE tm.team_id = ? 
+            AND tm.user_id != ?
+            AND (us.notify_announcements IS NULL OR us.notify_announcements = 1)
+        `;
+        
+        db.query(qTeamMembers, [author_id, teamId, author_id], (err3, members) => {
+          console.log('🔍 알림 받을 팀원:', members?.length || 0, '명');
+          
+          if (err3) {
+            console.error('팀원 조회 오류:', err3);
+          } else if (members.length > 0) {
+            const teamName = members[0].team_name || '팀';
+            const previewContent = content.trim().substring(0, 50);
+            const message = `${teamName}에 새로운 공지사항이 등록되었습니다: "${previewContent}${content.length > 50 ? '...' : ''}"`;
+
+            const notificationValues = members.map((m) => [
+              m.user_id,
+              teamId,
+              null,
+              message,
+              0,
+              new Date(),
+            ]);
+
+            const qInsertNotifications = `
+              INSERT INTO notifications (user_id, team_id, recruitment_id, message, is_read, created_at)
+              VALUES ?
+            `;
+
+            db.query(qInsertNotifications, [notificationValues], (err4) => {
+              if (err4) {
+                console.error('❌ 알림 전송 오류:', err4);
+              } else {
+                console.log(`✅ ${members.length}명에게 공지사항 알림 전송 완료`);
+              }
+            });
+          } else {
+            console.log('📭 공지사항 알림 설정한 팀원 없음');
+          }
+
+          // 3) 작성된 게시글 정보 반환
+          const qSelect = `
+            SELECT 
+              tb.board_id,
+              tb.title AS board_title,
+              tp.post_id,
+              tp.content,
+              tp.created_at,
+              u.name AS author_name
+            FROM team_boards tb
+            JOIN team_posts tp ON tb.board_id = tp.board_id
+            JOIN users u ON tp.author_id = u.id
+            WHERE tp.post_id = ?
+            LIMIT 1
+          `;
+          db.query(qSelect, [post_id], (err5, rows5) => {
+            if (err5 || rows5.length === 0) {
+              if (err5) console.error('작성 후 조회 오류:', err5);
+              return res.json({ success: true, post_id });
+            }
+            res.json({ success: true, post: rows5[0] });
+          });
+        });
+      });
+    };
+
+    if (rows1.length > 0) {
+      ensureInsertPost(rows1[0].board_id);
+    } else {
+      // 게시판 없으면 생성 후 글 등록
+      const qCreateBoard = `
+        INSERT INTO team_boards (team_id, title, created_at)
+        VALUES (?, '공지사항', NOW())
+      `;
+      db.query(qCreateBoard, [teamId], (errCreate, resultCreate) => {
+        if (errCreate) {
+          console.error('게시판 생성 오류:', errCreate);
+          return res.status(500).json({ success: false, message: '서버 오류' });
+        }
+        ensureInsertPost(resultCreate.insertId);
+      });
+    }
+  });
+});
+
+
+// ✅ PUT /teams/:teamId/board-title - 게시판 제목 수정
 app.put('/teams/:teamId/board-title', (req, res) => {
   const { teamId } = req.params;
   const { title } = req.body;
@@ -2282,136 +2432,6 @@ app.put('/teams/:teamId/board-title', (req, res) => {
     });
   });
 });
-// ✅ 공지사항 작성 API (알림 포함 버전)
-// POST /teams/:teamId/announcements
-
-/**
- * ✅ POST /teams/:teamId/announcements
- * body: { content: string, author_id: number }
- * return: { success: true, post: {...} }
- */
-app.post('/teams/:teamId/announcements', (req, res) => {
-  const { teamId } = req.params;
-  const { content, author_id } = req.body;
-
-  if (!content || !content.trim()) {
-    return res.status(400).json({ success: false, message: '내용이 비어있습니다' });
-  }
-  if (!author_id) {
-    return res.status(401).json({ success: false, message: '작성자 정보가 없습니다' });
-  }
-
-  // 1) 팀의 board_id 조회 (없으면 생성)
-  const qFindBoard = `SELECT board_id FROM team_boards WHERE team_id = ? LIMIT 1`;
-  db.query(qFindBoard, [teamId], (err1, rows1) => {
-    if (err1) {
-      console.error('board 조회 오류:', err1);
-      return res.status(500).json({ success: false, message: '서버 오류' });
-    }
-
-    const ensureInsertPost = (boardId) => {
-      const qInsertPost = `
-        INSERT INTO team_posts (board_id, author_id, content, created_at)
-        VALUES (?, ?, ?, NOW())
-      `;
-      db.query(qInsertPost, [boardId, author_id, content.trim()], (err2, result2) => {
-        if (err2) {
-          console.error('게시글 작성 오류:', err2);
-          return res.status(500).json({ success: false, message: '서버 오류' });
-        }
-
-        const post_id = result2.insertId;
-        // 클라이언트에서 바로 렌더링할 수 있게 작성자명 포함해 반환
-        const qSelect = `
-          SELECT 
-            tb.board_id,
-            tb.title AS board_title,
-            tp.post_id,
-            tp.content,
-            tp.created_at,
-            u.name AS author_name
-          FROM team_boards tb
-          JOIN team_posts tp ON tb.board_id = tp.board_id
-          JOIN users u ON tp.author_id = u.id
-          WHERE tp.post_id = ?
-          LIMIT 1
-        `;
-        db.query(qSelect, [post_id], (err3, rows3) => {
-          if (err3 || rows3.length === 0) {
-            if (err3) console.error('작성 후 조회 오류:', err3);
-            return res.json({ success: true, post_id });
-          }
-          res.json({ success: true, post: rows3[0] });
-        });
-      });
-    };
-
-    if (rows1.length > 0) {
-      ensureInsertPost(rows1[0].board_id);
-    } else {
-      // 게시판 없으면 생성 후 글 등록
-      const qCreateBoard = `
-        INSERT INTO team_boards (team_id, title, created_at)
-        VALUES (?, '공지사항', NOW())
-      `;
-      db.query(qCreateBoard, [teamId], (errCreate, resultCreate) => {
-        if (errCreate) {
-          console.error('게시판 생성 오류:', errCreate);
-          return res.status(500).json({ success: false, message: '서버 오류' });
-        }
-        ensureInsertPost(resultCreate.insertId);
-      });
-    }
-  });
-});
-
-// ✅ 일일 todos 알림
-app.post('/cron/daily-todos', (req, res) => {
-  const today = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
-
-  const query = `
-    SELECT t.todo_id, t.team_id, t.title, tm.user_id
-    FROM todos t
-    JOIN team_members tm ON t.team_id = tm.team_id
-    WHERE t.scope_type = '일일' AND DATE(t.due_date) = ?
-  `;
-
-  db.query(query, [today], (err, rows) => {
-    if (err) {
-      console.error('일일 할 일 조회 오류:', err);
-      return res.status(500).json({ success: false, message: '서버 오류' });
-    }
-
-    if (rows.length === 0) {
-      console.log('오늘 할 일 없음');
-      return res.json({ success: true, message: '오늘 보낼 알림 없음' });
-    }
-
-    const values = rows.map((r) => [
-      r.user_id,
-      r.team_id,
-      `오늘은 "${r.title}"를 해야해요!`,
-      0,
-      new Date(),
-    ]);
-
-    const insertSql = `
-      INSERT INTO notifications (user_id, team_id, message, is_read, created_at)
-      VALUES ?
-    `;
-
-    db.query(insertSql, [values], (err2) => {
-      if (err2) {
-        console.error('일일 할 일 알림 저장 오류:', err2);
-        return res.status(500).json({ success: false, message: '알림 저장 실패' });
-      }
-
-      console.log(`✅ ${rows.length}개의 일일 할 일 알림 전송 완료`);
-      res.json({ success: true, sent_count: rows.length });
-    });
-  });
-});
-
 
 // ✅ 알림 목록 조회
 app.get('/notifications/:userId', (req, res) => {
@@ -2422,11 +2442,14 @@ app.get('/notifications/:userId', (req, res) => {
       n.notification_id,
       n.user_id,
       n.team_id,
+      n.recruitment_id,
       n.message,
       n.is_read,
       n.created_at,
+      tr.activity_name,
       t.team_name
     FROM notifications n
+    LEFT JOIN team_recruitments tr ON n.recruitment_id = tr.recruitment_id
     LEFT JOIN teams t ON n.team_id = t.team_id
     WHERE n.user_id = ?
     ORDER BY n.created_at DESC
@@ -2444,7 +2467,9 @@ app.get('/notifications/:userId', (req, res) => {
       notifications: results.map((r) => ({
         id: r.notification_id,
         team_id: r.team_id,
+        recruitment_id: r.recruitment_id,
         team_name: r.team_name || null,
+        activity_name: r.activity_name || null, // 🔥 추가!
         message: r.message,
         is_read: !!r.is_read,
         created_at: r.created_at,
@@ -2480,49 +2505,94 @@ app.put('/notifications/:id/read', (req, res) => {
 // ✅ 사용자 알림 설정 조회
 app.get('/api/user-settings/:userId', (req, res) => {
   const { userId } = req.params;
-  const sql = `
-    SELECT notify_team_matching, notify_todos, notify_announcements
-    FROM user_settings WHERE user_id = ?
+
+  const query = `
+    SELECT 
+      notify_team_matching, 
+      notify_todos,
+      notify_announcements 
+    FROM user_settings 
+    WHERE user_id = ?
   `;
-  db.query(sql, [userId], (err, rows) => {
-    if (err) return res.status(500).json({ success: false, message: 'DB 오류' });
-    if (rows.length === 0)
-      return res.json({
+
+  db.query(query, [userId], (err, rows) => {
+    if (err) {
+      console.error('알림 설정 조회 오류:', err);
+      return res.status(500).json({ success: false, message: '서버 오류' });
+    }
+
+    if (rows.length === 0) {
+      // 설정이 없으면 기본값으로 자동 생성
+      const insertQuery = `
+        INSERT INTO user_settings (user_id, notify_team_matching, notify_todos, notify_announcements)
+        VALUES (?, 1, 1, 1)
+      `;
+      db.query(insertQuery, [userId], (err2) => {
+        if (err2) {
+          console.error('기본 설정 생성 오류:', err2);
+          return res.status(500).json({ success: false, message: '서버 오류' });
+        }
+        res.json({
+          success: true,
+          settings: { 
+            notify_team_matching: true, 
+            notify_todos: true,
+            notify_announcements: true 
+          },
+        });
+      });
+    } else {
+      // tinyint를 boolean으로 변환
+      res.json({
         success: true,
         settings: {
-          teamMatching: true,
-          todos: true,
-          announcements: true,
+          notify_team_matching: !!rows[0].notify_team_matching,
+          notify_todos: !!rows[0].notify_todos,
+          notify_announcements: !!rows[0].notify_announcements,
         },
       });
-    res.json({
-      success: true,
-      settings: {
-        teamMatching: !!rows[0].notify_team_matching,
-        todos: !!rows[0].notify_todos,
-        announcements: !!rows[0].notify_announcements,
-      },
-    });
+    }
   });
 });
 
-// ✅ 사용자 알림 설정 변경
+// ✅ PATCH /api/user-settings/:userId - 알림 설정 변경
 app.patch('/api/user-settings/:userId', (req, res) => {
   const { userId } = req.params;
-  const { teamMatching, todos, announcements } = req.body;
+  const { notify_team_matching, notify_announcements } = req.body;
 
-  const sql = `
-    INSERT INTO user_settings (user_id, notify_team_matching, notify_todos, notify_announcements)
-    VALUES (?, ?, ?, ?)
-    ON DUPLICATE KEY UPDATE
-      notify_team_matching = VALUES(notify_team_matching),
-      notify_todos = VALUES(notify_todos),
-      notify_announcements = VALUES(notify_announcements)
+  // notify_todos는 프론트에서 안 보내도 기존 값 유지
+  const query = `
+    UPDATE user_settings 
+    SET 
+      notify_team_matching = ?,
+      notify_announcements = ?
+    WHERE user_id = ?
   `;
 
-  db.query(sql, [userId, teamMatching, todos, announcements], (err) => {
-    if (err) return res.status(500).json({ success: false, message: '저장 실패' });
-    res.json({ success: true, message: '설정이 저장되었습니다.' });
+  db.query(query, [notify_team_matching ? 1 : 0, notify_announcements ? 1 : 0, userId], (err, result) => {
+    if (err) {
+      console.error('알림 설정 저장 오류:', err);
+      return res.status(500).json({ success: false, message: '서버 오류' });
+    }
+
+    // 업데이트된 행이 없으면 INSERT
+    if (result.affectedRows === 0) {
+      const insertQuery = `
+        INSERT INTO user_settings (user_id, notify_team_matching, notify_todos, notify_announcements)
+        VALUES (?, ?, 1, ?)
+      `;
+      db.query(insertQuery, [userId, notify_team_matching ? 1 : 0, notify_announcements ? 1 : 0], (err2) => {
+        if (err2) {
+          console.error('설정 생성 오류:', err2);
+          return res.status(500).json({ success: false, message: '서버 오류' });
+        }
+        console.log(`✅ 사용자 ${userId} 알림 설정 생성 완료`);
+        res.json({ success: true });
+      });
+    } else {
+      console.log(`✅ 사용자 ${userId} 알림 설정 업데이트 완료`);
+      res.json({ success: true });
+    }
   });
 });
 

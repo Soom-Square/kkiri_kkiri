@@ -129,9 +129,7 @@ const EvaluationScreen: React.FC = () => {
                     </View>
                   </View>
                   <Text style={styles.comment}>"{rv.comment || '코멘트가 없습니다.'}"</Text>
-                  <View style={styles.reviewFooter}>
-                    <Text style={styles.date}>{new Date(rv.created_at).toLocaleDateString('ko-KR')}</Text>
-                  </View>
+                  
                 </View>
               );
             })
